@@ -1,11 +1,11 @@
-﻿import { createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 
-const LONG_DASHES = /[‒–—―]/g; // figure/en/em dash, horizontal bar
-const HYPHEN_VARIANTS = /[‐‑−]/g; // hyphen, non-breaking hyphen, minus
-const SINGLE_QUOTES = /[‘’‚‛]/g;
-const DOUBLE_QUOTES = /[“”„‟]/g;
-const ELLIPSIS = /…/g;
-const NBSP = / /g;
+const LONG_DASHES = /[\u2012\u2013\u2014\u2015]/g; // figure/en/em dash, horizontal bar
+const HYPHEN_VARIANTS = /[\u2010\u2011\u2212]/g; // hyphen, non-breaking hyphen, minus
+const SINGLE_QUOTES = /[\u2018\u2019\u201a\u201b]/g;
+const DOUBLE_QUOTES = /[\u201c\u201d\u201e\u201f]/g;
+const ELLIPSIS = /\u2026/g;
+const NBSP = /\u00a0/g;
 
 /** Normalize text for comparison: NFC plus ASCII dash/quote/ellipsis hygiene. Idempotent. */
 export function canonicalizeText(input: string): string {
@@ -13,7 +13,7 @@ export function canonicalizeText(input: string): string {
     .normalize("NFC")
     .replace(LONG_DASHES, "-")
     .replace(HYPHEN_VARIANTS, "-")
-    .replace(SINGLE_QUOTES, "'")
+    .replace(SINGLE_QUOTES, "'" )
     .replace(DOUBLE_QUOTES, '"')
     .replace(ELLIPSIS, "...")
     .replace(NBSP, " ");

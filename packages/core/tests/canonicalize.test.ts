@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   canonicalizeText,
   canonicalizeJson,
@@ -9,12 +9,12 @@ import {
 
 describe("canonicalizeText", () => {
   it("is idempotent", () => {
-    const s = "Smart “quotes” and an em—dash.";
+    const s = "Smart \u201cquotes\u201d and an em\u2014dash.";
     expect(canonicalizeText(canonicalizeText(s))).toBe(canonicalizeText(s));
   });
 
   it("normalizes smart quotes, dashes, and ellipsis to ASCII", () => {
-    const out = canonicalizeText("“Hi” — wait… it’s fine");
+    const out = canonicalizeText("\u201cHi\u201d \u2014 wait\u2026 it\u2019s fine");
     expect(out).toBe('"Hi" - wait... it\'s fine');
   });
 
@@ -23,8 +23,8 @@ describe("canonicalizeText", () => {
   });
 
   it("treats NFC and decomposed Unicode as equal", () => {
-    const precomposed = "café";
-    const decomposed = "café";
+    const precomposed = "caf\u00e9";
+    const decomposed = "cafe\u0301";
     expect(canonicalizeText(precomposed)).toBe(canonicalizeText(decomposed));
   });
 });
