@@ -68,8 +68,8 @@ export default function Home() {
       <header>
         <h1 className="text-2xl font-bold">GroundLock</h1>
         <p className="text-neutral-600">
-          The AI cannot send a fabricated number, date, or registered identifier. Verify a draft against a source of
-          truth and get a signed, re-verifiable proof.
+          The AI cannot send a fabricated currency amount, date, percentage, or registered-pattern token. Verify a
+          draft against a source of truth and get a signed, re-verifiable proof.
         </p>
       </header>
 

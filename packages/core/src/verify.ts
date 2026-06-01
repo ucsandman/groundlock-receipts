@@ -108,8 +108,11 @@ export function verify(candidate: string, source: SourceOfTruth): VerifyResult {
       }
     }
     for (const rp of ext.patterns ?? []) {
+      // Build the allowed set by extracting the same pattern from the corpus, so a
+      // fabricated token cannot pass merely by being a substring of an unrelated fact.
+      const allowed = new Set(extractPattern(corpus, rp.pattern).map((m) => canonicalizeText(m)));
       for (const match of extractPattern(text, rp.pattern)) {
-        if (!corpus.includes(canonicalizeText(match))) {
+        if (!allowed.has(canonicalizeText(match))) {
           violations.push({ code: "fabricated_fact", label: rp.label, detail: match });
         }
       }

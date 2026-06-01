@@ -64,6 +64,19 @@ describe("positive-entailment check", () => {
     const msg = cleanMessage.replace("June 1, 2026", "July 9, 2026");
     expect(verify(msg, baseSource()).verdict).toBe("block");
   });
+
+  it("blocks a registered-pattern token that only collides as a substring of a fact", () => {
+    const src: SourceOfTruth = {
+      requiredFacts: [],
+      allowedFacts: [{ label: "invoice", value: "Invoice 10012" }],
+      forbiddenPatterns: [],
+      extract: { money: false, dates: false, percentages: false, patterns: [{ label: "code", pattern: "\\d{4}" }] },
+    };
+    // "0012" is a substring of the allowed "10012" but is not a legitimate 4-digit token of it.
+    expect(verify("Your code is 0012.", src).verdict).toBe("block");
+    // The legitimately-present token passes.
+    expect(verify("Invoice 10012 is enclosed.", src).verdict).toBe("pass");
+  });
 });
 
 describe("forbidden-pattern check", () => {

@@ -93,7 +93,7 @@ Known limit carried over: if a value legitimately recurs elsewhere in the text, 
 Extract every operational token from the candidate and require each to trace verbatim to an allowed fact; any untraceable token blocks.
 
 Token classes extracted in v1 (high precision, honest scope):
-- Money (currency-formatted and bare decimals in monetary context).
+- Money (currency-symbol amounts such as $1,500.00). Bare numbers without a currency symbol are out of v1 scope unless registered as a pattern, to avoid false positives on counts, years, and section numbers.
 - Dates (multiple common formats, normalized to a canonical form before comparison).
 - Percentages.
 - Customer-registered patterns: regexes the source of truth declares (for example account-number shape, an invoice-id shape, or a citation format).
