@@ -11,9 +11,14 @@ A vendor-neutral non-fabrication guarantee for AI-generated business messages. S
 - `apps/web` - Next.js playground and `/api/verify`.
 
 ## Develop
+- `git clone git@github.com:ucsandman/GroundLock.git`
 - `npm install`
-- `npm test` - run the core test suite
+- `npm test` - run the core test suite (33 tests)
+- `npm run typecheck` - typecheck both workspaces
 - `npm run dev --workspace @groundlock/web` - run the playground at http://localhost:3000
 
+## Repository
+https://github.com/ucsandman/GroundLock
+
 ## Status
-v1 demo engine. No industry vertical committed. Fail-closed by design.
+v1 demo engine: zero-runtime-dependency core (33 passing tests), a Next.js playground plus `/api/verify`, and green typechecks and production build. No industry vertical committed. Fail-closed by design.
