@@ -17,13 +17,11 @@ function wordBoundary(term: string, flags: string): RegExp {
 /**
  * Check whether a required fact is satisfied by the candidate text.
  *
- * Slot logic:
- *   - If the fact has a slot prefix, the prefix must appear in the text and
- *     the expected value (or a money-normalized variant) must follow it.
- *   - If no slot prefix, the value must appear verbatim anywhere in the text.
- *
- * Returns true when the fact is satisfied (or when the slot prefix is absent
- * from the message, meaning the claim domain is not invoked).
+ * The fact (with its optional role-slot prefix/suffix) must appear verbatim.
+ * For a slotted money fact, a formatting variant of the same amount in the
+ * same role is accepted (e.g. "$2000" for "$2,000.00" after "return ").
+ * Enforcement is unconditional: an absent required fact is a missing_required
+ * violation (no silent omission), in line with the fail-closed guarantee.
  */
 function isRequiredFactSatisfied(text: string, fact: RequiredFact): boolean {
   const canonValue = canonicalizeText(fact.value);
@@ -31,46 +29,23 @@ function isRequiredFactSatisfied(text: string, fact: RequiredFact): boolean {
   const canonSuffix = canonicalizeText(fact.slot?.suffix ?? "");
   const exact = canonPrefix + canonValue + canonSuffix;
 
-  if (!fact.slot?.prefix && !fact.slot?.suffix) {
-    // No slot: verbatim presence required.
-    return text.includes(exact);
-  }
-
-  // Slotted fact: only enforced when the prefix is present in the text.
-  if (canonPrefix && !text.includes(canonPrefix)) {
-    return true; // prefix not in text => claim domain not invoked => satisfied
-  }
-
-  // Exact verbatim check first.
   if (text.includes(exact)) return true;
 
-  // Normalized money fallback: if the expected value looks like a money amount,
-  // accept any formatting variant that normalizes to the same numeric value.
-  const moneyNorm = normalizeMoney(fact.value);
-  // normalizeMoney returns a bare number; the source value has a "$" prefix.
-  if (moneyNorm !== fact.value.trim()) {
-    // It was a money value. Look for prefix then any money token normalizing the same.
-    const prefixIdx = text.indexOf(canonPrefix);
-    if (prefixIdx !== -1) {
-      const afterPrefix = text.slice(prefixIdx + canonPrefix.length);
-      const firstMoney = extractMoney(afterPrefix)[0];
-      if (firstMoney && firstMoney.normalized === moneyNorm) return true;
+  // Money-normalization fallback, only for slotted money facts: accept any
+  // formatting variant of the same amount appearing in the same role-slot.
+  if (canonPrefix) {
+    const moneyNorm = normalizeMoney(fact.value);
+    if (moneyNorm !== fact.value.trim()) {
+      const prefixIdx = text.indexOf(canonPrefix);
+      if (prefixIdx !== -1) {
+        const afterPrefix = text.slice(prefixIdx + canonPrefix.length);
+        const firstMoney = extractMoney(afterPrefix)[0];
+        if (firstMoney && firstMoney.normalized === moneyNorm) return true;
+      }
     }
   }
 
   return false;
-}
-
-/**
- * Whether the text invokes at least one slotted-fact claim domain
- * (i.e., contains at least one slot prefix from the required facts).
- * Used to gate enforcement of un-slotted required facts.
- */
-function anySlotPrefixPresent(text: string, facts: RequiredFact[]): boolean {
-  return facts.some((f) => {
-    const p = canonicalizeText(f.slot?.prefix ?? "");
-    return p.length > 0 && text.includes(p);
-  });
 }
 
 export function verify(candidate: string, source: SourceOfTruth): VerifyResult {
@@ -78,19 +53,11 @@ export function verify(candidate: string, source: SourceOfTruth): VerifyResult {
     const violations: Violation[] = [];
     const text = canonicalizeText(candidate);
 
-    // 1. Required facts: each must appear verbatim (with slot prefix guard to prevent role swaps).
-    //    Un-slotted required facts are only enforced when the message invokes the claim domain
-    //    (i.e., when at least one slotted-fact prefix appears in the message); this avoids
-    //    false positives for messages that are simply off-topic.
-    //    If the source has no slotted facts at all, the domain is always considered invoked
-    //    (all required facts are enforced unconditionally).
-    const hasAnySlotedFacts = source.requiredFacts.some((f) => Boolean(f.slot?.prefix || f.slot?.suffix));
-    const domainInvoked = !hasAnySlotedFacts || anySlotPrefixPresent(text, source.requiredFacts);
+    // 1. Required facts: each must appear verbatim, with an optional role-slot
+    //    (prefix/suffix) to prevent two same-typed values from swapping roles.
+    //    Enforcement is unconditional: an absent required fact blocks.
     for (const f of source.requiredFacts) {
       if (f.value.trim() === "") continue;
-      const hasSlot = Boolean(f.slot?.prefix || f.slot?.suffix);
-      // Non-slotted facts are only enforced when the claim domain is invoked.
-      if (!hasSlot && !domainInvoked) continue;
       if (!isRequiredFactSatisfied(text, f)) {
         violations.push({ code: "missing_required", label: f.label });
       }

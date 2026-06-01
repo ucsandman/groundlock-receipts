@@ -38,6 +38,12 @@ describe("required-fact check", () => {
     const msg = "My security deposit was $2,000.00. Please return $1,500.00 to Jane Roe by June 1, 2026.";
     expect(verify(msg, baseSource()).verdict).toBe("block");
   });
+
+  it("blocks when a required fact is omitted entirely (no silent omission)", () => {
+    const r = verify("Hello, please get in touch at your convenience.", baseSource());
+    expect(r.verdict).toBe("block");
+    expect(r.violations.some((v) => v.code === "missing_required")).toBe(true);
+  });
 });
 
 describe("positive-entailment check", () => {
@@ -69,8 +75,11 @@ describe("forbidden-pattern check", () => {
   });
 
   it("does not false-positive on word fragments", () => {
-    const src = baseSource();
-    src.forbiddenPatterns = [{ label: "competitor", pattern: "Cooper" }];
+    const src: SourceOfTruth = {
+      requiredFacts: [],
+      allowedFacts: [],
+      forbiddenPatterns: [{ label: "competitor", pattern: "Cooper" }],
+    };
     const msg = "We met in Coopersville near Freedom Field.";
     expect(verify(msg, src).verdict).toBe("pass");
   });
