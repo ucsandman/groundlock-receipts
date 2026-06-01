@@ -82,7 +82,10 @@ export function verify(candidate: string, source: SourceOfTruth): VerifyResult {
     //    Un-slotted required facts are only enforced when the message invokes the claim domain
     //    (i.e., when at least one slotted-fact prefix appears in the message); this avoids
     //    false positives for messages that are simply off-topic.
-    const domainInvoked = anySlotPrefixPresent(text, source.requiredFacts);
+    //    If the source has no slotted facts at all, the domain is always considered invoked
+    //    (all required facts are enforced unconditionally).
+    const hasAnySlotedFacts = source.requiredFacts.some((f) => Boolean(f.slot?.prefix || f.slot?.suffix));
+    const domainInvoked = !hasAnySlotedFacts || anySlotPrefixPresent(text, source.requiredFacts);
     for (const f of source.requiredFacts) {
       if (f.value.trim() === "") continue;
       const hasSlot = Boolean(f.slot?.prefix || f.slot?.suffix);
