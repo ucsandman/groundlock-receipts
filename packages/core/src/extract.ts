@@ -32,7 +32,7 @@ export function normalizeDate(raw: string): string | null {
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(raw.trim());
-  if (slash) return `${slash[3]}-${pad(slash[1])}-${pad(slash[2])}`;
+  if (slash) return `${slash[3]!}-${pad(slash[1]!)}-${pad(slash[2]!)}`;
   const month = new RegExp(
     "^(" + Object.keys(MONTHS).join("|") + ")\\s+(\\d{1,2}),\\s*(\\d{4})$",
     "i",

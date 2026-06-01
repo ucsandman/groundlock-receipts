@@ -16,9 +16,10 @@ export function generateSigningKey(kid: string): KeyPairJwk {
 }
 
 export function privateKeyFromJwk(jwk: JsonWebKey): KeyObject {
-  return createPrivateKey({ key: jwk as object, format: "jwk" });
+  // Cast via unknown to reconcile DOM JsonWebKey vs node:crypto JsonWebKey index-signature difference.
+  return createPrivateKey({ key: jwk as unknown as import("node:crypto").JsonWebKey, format: "jwk" });
 }
 
 export function publicKeyFromJwk(jwk: JsonWebKey): KeyObject {
-  return createPublicKey({ key: jwk as object, format: "jwk" });
+  return createPublicKey({ key: jwk as unknown as import("node:crypto").JsonWebKey, format: "jwk" });
 }
