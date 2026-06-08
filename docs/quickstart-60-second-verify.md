@@ -81,10 +81,11 @@ After publishing real TXT records and status endpoints, verify the public path w
 
 ```powershell
 groundlock export-web-env (Join-Path $publishDir "dns-fixture.json") --status-base-url https://publisher.example/groundlock/status
+groundlock warm-cache (Join-Path $publishDir "dns-fixture.json") --doh-endpoint https://cloudflare-dns.com/dns-query
 groundlock check-live $samplePath --domain publisher.example --status-base-url https://publisher.example/groundlock/status
 ```
 
-`export-web-env` prints the web deployment variables, including `GROUNDLOCK_STATUS_RECORDS_JSON`. `check-live` uses DNS-over-HTTPS TXT lookups plus public key/claim status endpoints. It returns PASS only when the deployed resolver and status path can reconstruct and verify the receipt.
+`export-web-env` prints the web deployment variables, including `GROUNDLOCK_STATUS_RECORDS_JSON`. `warm-cache` queries every expected DNS TXT fixture name through the configured DoH resolver and fails if the answer set differs. `check-live` uses DNS-over-HTTPS TXT lookups plus public key/claim status endpoints. It returns PASS only when the deployed resolver and status path can reconstruct and verify the receipt.
 
 ## Emit a C2PA interop sidecar
 

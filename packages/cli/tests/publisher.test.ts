@@ -1,13 +1,14 @@
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateSigningKey, parseCacheManifestRecord } from "@groundlock/core";
 import {
   localPublish,
   exportWebEnv,
   setupDomainRecords,
   signFile,
+  warmDnsCache,
   verifyWithFixture,
 } from "../src/publisher.js";
 import type { SourceOfTruth } from "@groundlock/core";
@@ -17,6 +18,11 @@ const source: SourceOfTruth = {
   allowedFacts: [{ label: "amount", value: "$2,000.00" }],
   extract: { money: true, dates: false, percentages: false },
 };
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 async function fixtureDir() {
   const dir = await mkdtemp(path.join(tmpdir(), "groundlock-cli-"));
@@ -119,6 +125,41 @@ describe("publisher SDK", () => {
     expect(env).not.toContain("publicKeyJwk");
   });
 
+  it("warms and validates all DNS cache fixture TXT records through DoH", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const publishDir = path.join(dir, "publish");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: publishDir,
+    });
+    const fixture = JSON.parse(await readFile(published.fixturePath, "utf8")) as { txt: Record<string, string[]> };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = new URL(String(input));
+        const name = url.searchParams.get("name") ?? "";
+        return jsonResponse({
+          Status: fixture.txt[name] ? 0 : 3,
+          AD: true,
+          Answer: (fixture.txt[name] ?? []).map((data) => ({ type: 16, data: `"${data}"` })),
+        });
+      }),
+    );
+
+    const result = await warmDnsCache({
+      fixturePath: published.fixturePath,
+      dohEndpoint: "https://resolver.example/dns-query",
+    });
+
+    expect(result).toEqual({ state: "PASS", checked: Object.keys(fixture.txt).length, failures: [] });
+  });
+
   it("prints DNS cache records without HTTPS receipt storage or DNS mutation", async () => {
     const { dir, sourcePath, filePath } = await fixtureDir();
     const key = generateSigningKey("k1");
@@ -182,3 +223,10 @@ describe("publisher SDK", () => {
     );
   });
 });
+
+function jsonResponse(body: unknown, ok = true) {
+  return {
+    ok,
+    json: async () => body,
+  };
+}

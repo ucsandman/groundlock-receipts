@@ -61,6 +61,18 @@ Required TXT records:
 
 After publishing, query the manifest and all chunks through the configured recursive resolver path before announcing the receipt. Verification returns `UNVERIFIABLE` if any cache chunk is missing, malformed, not DNSSEC validated, or hash-mismatched.
 
+Use the local publish fixture to warm and compare every expected TXT answer through the same DoH endpoint:
+
+```powershell
+groundlock warm-cache .\published\dns-fixture.json --doh-endpoint https://cloudflare-dns.com/dns-query
+```
+
+Expected output:
+
+```text
+PASS warmed <n> DNS TXT names
+```
+
 Use the CLI to verify the same public path the web verifier will use:
 
 ```powershell
@@ -144,6 +156,6 @@ The audit exits non-zero if:
 - `GET /api/health` returns `200` on the deployed verifier.
 - Container image builds and its Docker healthcheck passes, if deploying by container.
 - DNS TXT identity, manifest, and chunk records are published.
-- Configured resolvers are warmed and verified before links are shared.
+- `groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` returns PASS through the configured resolver path.
 - `groundlock check-live <file|hash> --domain <domain> --status-base-url <url>` returns PASS from the configured resolver path.
 - `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, and `npm audit --json` pass.

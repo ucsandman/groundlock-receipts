@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi, afterEach } from "vitest";
@@ -99,6 +99,56 @@ describe("CLI entrypoint", () => {
     const out = stdout.mock.calls.map((call) => String(call[0])).join("");
     expect(out).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.example");
     expect(out).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
+  });
+
+  it("warms DNS cache fixture records through the configured DoH endpoint", async () => {
+    const { dir, sourcePath, blockedPath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const outDir = path.join(dir, "publish");
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await main([
+      "local-publish",
+      blockedPath,
+      "--source",
+      sourcePath,
+      "--domain",
+      "publisher.example",
+      "--kid",
+      key.kid,
+      "--key",
+      JSON.stringify(key.privateKeyJwk),
+      "--public-key",
+      JSON.stringify(key.publicKeyJwk),
+      "--out",
+      outDir,
+    ]);
+    const fixturePath = path.join(outDir, "dns-fixture.json");
+    const fixture = JSON.parse(await readFile(fixturePath, "utf8")) as { txt: Record<string, string[]> };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = new URL(String(input));
+        const name = url.searchParams.get("name") ?? "";
+        return jsonResponse({
+          Status: fixture.txt[name] ? 0 : 3,
+          AD: true,
+          Answer: (fixture.txt[name] ?? []).map((data) => ({ type: 16, data: `"${data}"` })),
+        });
+      }),
+    );
+    stdout.mockClear();
+
+    const code = await main([
+      "warm-cache",
+      fixturePath,
+      "--doh-endpoint",
+      "https://resolver.example/dns-query",
+    ]);
+
+    expect(code).toBe(0);
+    const out = stdout.mock.calls.map((call) => String(call[0])).join("");
+    expect(out).toContain("PASS warmed");
+    expect(out).toContain(String(Object.keys(fixture.txt).length));
   });
 
   it("checks a live DNS-cache verifier deployment through DoH and status endpoints", async () => {

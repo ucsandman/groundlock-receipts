@@ -83,6 +83,17 @@ export interface ExportWebEnvOptions {
   dohEndpoint?: string;
 }
 
+export interface WarmDnsCacheOptions {
+  fixturePath: string;
+  dohEndpoint?: string;
+}
+
+export interface WarmDnsCacheResult {
+  state: "PASS" | "UNVERIFIABLE";
+  checked: number;
+  failures: Array<{ name: string; code: string; explanation: string }>;
+}
+
 interface DnsFixture {
   domain: string;
   txt: Record<string, string[]>;
@@ -205,6 +216,35 @@ export async function exportWebEnv(opts: ExportWebEnvOptions): Promise<string> {
   return `${lines.join("\n")}\n`;
 }
 
+export async function warmDnsCache(opts: WarmDnsCacheOptions): Promise<WarmDnsCacheResult> {
+  const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
+  const resolver = createDohTxtResolver(fetchJson, opts.dohEndpoint);
+  const failures: WarmDnsCacheResult["failures"] = [];
+  const names = Object.keys(fixture.txt).sort();
+
+  for (const name of names) {
+    const expected = fixture.txt[name] ?? [];
+    const lookup = await resolver.resolveTxt(name);
+    if (lookup.type !== "found") {
+      failures.push({ name, code: lookup.code, explanation: lookup.explanation });
+      continue;
+    }
+    if (lookup.dnssecValidated !== true) {
+      failures.push({ name, code: "dnssec_not_validated", explanation: "DNS TXT lookup was not DNSSEC validated" });
+      continue;
+    }
+    if (!sameTxtSet(expected, lookup.records)) {
+      failures.push({ name, code: "dns_txt_mismatch", explanation: "DoH TXT answer did not match expected cache fixture records" });
+    }
+  }
+
+  return {
+    state: failures.length === 0 ? "PASS" : "UNVERIFIABLE",
+    checked: names.length,
+    failures,
+  };
+}
+
 async function readTextCapped(filePath: string): Promise<string> {
   const data = await readFile(filePath);
   if (data.byteLength > MAX_INPUT_BYTES) throw new Error("input_too_large");
@@ -255,6 +295,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function safeFileName(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function sameTxtSet(left: string[], right: string[]): boolean {
+  return JSON.stringify([...left].sort()) === JSON.stringify([...right].sort());
 }
 
 type FetchJson = (

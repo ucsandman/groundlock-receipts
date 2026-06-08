@@ -42,6 +42,7 @@ docs/quickstart-60-second-verify.md signs a local sample, writes local DNS-cache
 Deployment notes:
 docs/deployment.md documents live verifier mode with GROUNDLOCK_SIGNER_DOMAIN, DNS-over-HTTPS TXT lookups, resolver-cache warming, and HTTP key/claim status endpoints.
 `groundlock export-web-env <dns-fixture.json> --status-base-url <url>` prints the deploy env block for the public web verifier.
+`groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` warms and compares the expected DNS TXT records through the configured resolver path.
 The release gate is `groundlock check-live <file-or-hash> --domain <domain> --status-base-url <url>` returning PASS against the configured resolver path.
 The final go/no-go audit is `python .\scripts\hn_readiness.py --health-url <url> --file-or-hash <file-or-hash> --domain <domain> --status-base-url <url>`.
 
@@ -57,6 +58,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - c<N>.gl-<hash>._groundlock.<domain> TXT receipt chunk records
 - reachable key and claim status records
 - public demo fixtures that do not contain secrets or private customer data
+- warm-cache PASS evidence for the public demo fixture
 - check-live PASS evidence for at least one public demo receipt
 - green CI run on main
 - `scripts/hn_readiness.py` passing

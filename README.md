@@ -73,6 +73,7 @@ npm run dev --workspace @groundlock/web -- --hostname 127.0.0.1 --port 3000
 docker build -t groundlock-web .
 docker run --rm -p 3000:3000 groundlock-web
 groundlock export-web-env .\published\dns-fixture.json --status-base-url https://publisher.example/groundlock/status
+groundlock warm-cache .\published\dns-fixture.json --doh-endpoint https://cloudflare-dns.com/dns-query
 groundlock check-live sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status
 python .\scripts\hn_readiness.py --health-url https://publisher.example --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status
 ```

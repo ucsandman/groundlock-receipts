@@ -6,6 +6,7 @@ import {
   localPublish,
   setupDomainRecords,
   signFile,
+  warmDnsCache,
   verifyLive,
   verifyWithFixture,
   type SetupDomainRecords,
@@ -64,6 +65,18 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         dohEndpoint: opts["doh-endpoint"],
       }));
       return 0;
+    }
+    if (command === "warm-cache") {
+      requireValue(first, "dns-fixture");
+      const result = await warmDnsCache({
+        fixturePath: first,
+        dohEndpoint: opts["doh-endpoint"],
+      });
+      process.stdout.write(`${result.state} warmed ${result.checked} DNS TXT names\n`);
+      for (const failure of result.failures) {
+        process.stdout.write(`${failure.name} ${failure.code} - ${failure.explanation}\n`);
+      }
+      return result.state === "PASS" ? 0 : 2;
     }
     if (command === "setup-domain") {
       requireValue(first, "domain");
@@ -160,6 +173,7 @@ function help(): string {
     "groundlock verify <file|hash> --fixture <dns-fixture.json> [--domain <domain>]",
     "groundlock check-live <file|hash> --domain <domain> --status-base-url <url> [--doh-endpoint <url>]",
     "groundlock export-web-env <dns-fixture.json> --status-base-url <url> [--doh-endpoint <url>]",
+    "groundlock warm-cache <dns-fixture.json> [--doh-endpoint <url>]",
     "groundlock setup-domain <domain> --receipt <receipt.json> --public-key <jwk> [--chunk-size <chars>]",
     "groundlock local-publish <file> --source <json> --domain <domain> --kid <kid> --key <jwk> --public-key <jwk> --out <dir>",
   ].join("\n") + "\n";
