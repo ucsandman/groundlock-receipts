@@ -22,6 +22,16 @@ GroundLock is narrow by design: it is a non-fabrication guarantee, not a truth o
 - It does not mutate production DNS for you.
 - It does not replace official C2PA signing or embedding tools.
 
+## Spam and phishing boundary
+
+GroundLock helps with impersonation, not all spam. A verifier can check whether one exact message or hash was signed by
+a key tied to the claimed publisher domain and is still active. If a message claims to be from a bank, agency, hospital,
+or other publisher but has no valid GroundLock receipt, the verifier can fail closed instead of trusting the claim.
+
+GroundLock does not decide whether signed content is safe, wanted, legal, or morally good. Mail clients, browser
+extensions, and agents would still need spam filtering, abuse detection, URL safety checks, and user policy on top of
+GroundLock.
+
 ## Clean clone
 
 ```powershell

@@ -22,9 +22,12 @@ describe("marketing copy", () => {
     const combined = `${page}\n${sections}`;
 
     expect(combined).toContain("What the verifier checks");
+    expect(combined).toContain("Proof, not truth");
+    expect(combined).toContain("Verify who anchored the message");
     expect(combined).toContain("same canonicalized message");
     expect(combined).toContain("the claimed domain controls the signing key");
     expect(combined).toContain("It does not decide whether the prose is true");
     expect(combined).toContain("It helps with phishing by exposing unsigned impersonation");
+    expect(combined).toContain("It does not replace spam filtering");
   });
 });

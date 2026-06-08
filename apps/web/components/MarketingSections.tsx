@@ -41,6 +41,9 @@ export function MarketingNav() {
           GroundLock Receipts
         </a>
         <div className="hidden items-center gap-5 text-sm font-semibold text-[var(--muted-ink)] md:flex">
+          <a className="hover:text-[var(--ink)]" href="/#proof">
+            Proof
+          </a>
           <a className="hover:text-[var(--ink)]" href="/#concept">
             Concept
           </a>
@@ -70,6 +73,58 @@ export function MarketingNav() {
         </a>
       </nav>
     </header>
+  );
+}
+
+export function PlainProofBoundary() {
+  const proofs = [
+    {
+      label: "Exact content",
+      body: "The pasted text or hash matches the canonicalized message hash named by the receipt.",
+    },
+    {
+      label: "Domain signer",
+      body: "The signing key is tied to a DNS name controlled by the claimed publisher domain.",
+    },
+    {
+      label: "Public receipt",
+      body: "DNS TXT manifest and chunk records rebuild the same signed receipt the publisher anchored.",
+    },
+    {
+      label: "Current status",
+      body: "The publisher has not revoked the key or the specific receipt being checked.",
+    },
+  ];
+
+  return (
+    <section id="proof" className="border-b border-[var(--line)] bg-[var(--paper)]">
+      <div className="mx-auto grid max-w-7xl gap-8 px-5 py-12 md:px-8 md:py-16 lg:grid-cols-[0.82fr_1.18fr]">
+        <div>
+          <p className="text-sm font-bold uppercase text-[var(--danger)]">Proof, not truth</p>
+          <h2 className="mt-3 font-[family-name:var(--font-display)] text-4xl font-semibold md:text-6xl">
+            Verify who anchored the message.
+          </h2>
+          <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--muted-ink)]">
+            GroundLock does not decide whether a message is true. It checks whether this exact content was signed by
+            the domain it claims to come from, reconstructed from DNS cache storage, and still allowed by current
+            status.
+          </p>
+          <p className="mt-5 max-w-2xl text-sm font-bold leading-6">
+            For phishing, that means an unsigned impersonation cannot pass as the bank, agency, hospital, or publisher
+            it claims to be. GroundLock does not replace spam filtering, abuse detection, or human judgment about
+            whether the signed content itself is safe.
+          </p>
+        </div>
+        <div className="grid border border-[var(--line)] bg-[var(--surface)] md:grid-cols-2">
+          {proofs.map((proof) => (
+            <article className="border-b border-[var(--line)] p-5 last:border-b-0 md:border-r md:[&:nth-child(2n)]:border-r-0 md:[&:nth-last-child(-n+2)]:border-b-0" key={proof.label}>
+              <p className="font-mono text-xs font-bold uppercase text-[var(--brass)]">{proof.label}</p>
+              <p className="mt-4 text-lg font-bold leading-7">{proof.body}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -201,7 +256,8 @@ export function VerificationBoundary() {
           </p>
           <p className="mt-5 max-w-xl text-sm font-bold leading-6">
             It helps with phishing by exposing unsigned impersonation. A fake message can still exist, but it cannot
-            pass as signed by a domain that never anchored it.
+            pass as signed by a domain that never anchored it. It does not replace spam filtering or content safety
+            systems.
           </p>
         </div>
         <div className="grid border border-[var(--line)] bg-[var(--surface)] md:grid-cols-2">

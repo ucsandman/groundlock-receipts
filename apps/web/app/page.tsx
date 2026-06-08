@@ -4,6 +4,7 @@ import {
   CacheMechanism,
   MarketingNav,
   OssPresence,
+  PlainProofBoundary,
   Pricing,
   PublicGood,
   ResolverCacheProof,
@@ -62,6 +63,7 @@ export default function Home() {
         </div>
       </section>
 
+      <PlainProofBoundary />
       <ResolverCacheProof />
       <CacheMechanism />
       <VerificationBoundary />

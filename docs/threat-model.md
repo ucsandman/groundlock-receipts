@@ -22,6 +22,16 @@ GroundLock Receipts are canonicalized-message accountability artifacts stored in
 - It does not prevent a publisher from issuing a bad receipt with its own key.
 - It does not guarantee that recursive resolver caches will retain data forever.
 
+## Spam and phishing boundary
+
+GroundLock can expose unsigned impersonation. If a message claims to be from `publisher.example`, verification can check
+whether `publisher.example` anchored a receipt for that exact canonicalized message hash and whether the receipt/key are
+still active.
+
+GroundLock does not stop arbitrary spam, judge link safety, score sender reputation, or decide whether signed content is
+good for the recipient. It is a provenance and integrity layer that spam filters, mail clients, browser extensions, and
+AI agents can use as one signal.
+
 ## Canonicalized-hash limits
 
 A receipt binds one GroundLock text-canonicalized content hash (`groundlock:text:nfc-v1`). The hash normalizes Unicode text and selected punctuation before hashing; it is not a raw byte-for-byte file identity claim.
