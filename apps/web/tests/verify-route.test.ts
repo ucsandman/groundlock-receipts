@@ -14,6 +14,17 @@ async function postJson(body: unknown, headers: Record<string, string> = {}) {
   return { response, json: await response.json() };
 }
 
+async function postRaw(body: string, headers: Record<string, string> = {}) {
+  const response = await POST(
+    new Request("http://localhost/api/verify", {
+      method: "POST",
+      headers,
+      body,
+    }),
+  );
+  return { response, json: await response.json() };
+}
+
 describe("public verifier route", () => {
   beforeEach(() => {
     resetPublicVerifierRateLimitForTest();
@@ -75,6 +86,24 @@ describe("public verifier route", () => {
         json: expect.objectContaining({ state: "UNVERIFIABLE", code: "missing_public_input" }),
       }),
     );
+    await expect(postRaw("{", { "content-type": "application/json" })).resolves.toEqual(
+      expect.objectContaining({
+        response: expect.objectContaining({ status: 400 }),
+        json: expect.objectContaining({ state: "UNVERIFIABLE", code: "invalid_json" }),
+      }),
+    );
+    await expect(postRaw("hello", { "content-type": "text/plain" })).resolves.toEqual(
+      expect.objectContaining({
+        response: expect.objectContaining({ status: 415 }),
+        json: expect.objectContaining({ state: "UNVERIFIABLE", code: "unsupported_content_type" }),
+      }),
+    );
+    for (const body of ["null", "[]", '"sha256:abc123"']) {
+      const result = await postRaw(body, { "content-type": "application/json; charset=utf-8" });
+      expect(result.response.status).toBe(400);
+      expect(result.response.headers.get("cache-control")).toBe("no-store");
+      expect(result.json).toEqual(expect.objectContaining({ state: "UNVERIFIABLE", code: "invalid_input" }));
+    }
   });
 
   it("does not issue signed receipts from the public verifier", async () => {

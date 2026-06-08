@@ -27,6 +27,10 @@ export async function POST(req: Request) {
   const limited = rateLimit(req);
   if (limited) return limited;
 
+  if (!isJsonContentType(req.headers.get("content-type"))) {
+    return publicError("unsupported_content_type", 415);
+  }
+
   const parsed = await readJsonBodyCapped(req);
   if (!parsed.ok) return parsed.response;
   const body = parsed.body;
@@ -52,7 +56,7 @@ export async function POST(req: Request) {
 
 async function readJsonBodyCapped(req: Request): Promise<{ ok: true; body: VerifyRequestBody } | { ok: false; response: Response }> {
   const reader = req.body?.getReader();
-  if (!reader) return { ok: false, response: jsonNoStore({ error: "invalid_json" }, { status: 400 }) };
+  if (!reader) return { ok: false, response: publicError("invalid_json", 400) };
 
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -69,9 +73,13 @@ async function readJsonBodyCapped(req: Request): Promise<{ ok: true; body: Verif
 
   try {
     const text = Buffer.concat(chunks).toString("utf8");
-    return { ok: true, body: JSON.parse(text) as VerifyRequestBody };
+    const body = JSON.parse(text) as unknown;
+    if (!isRecord(body)) {
+      return { ok: false, response: publicError("invalid_input", 400) };
+    }
+    return { ok: true, body };
   } catch {
-    return { ok: false, response: jsonNoStore({ error: "invalid_json" }, { status: 400 }) };
+    return { ok: false, response: publicError("invalid_json", 400) };
   }
 }
 
@@ -128,4 +136,12 @@ function rateLimit(_req: Request) {
     });
   }
   return null;
+}
+
+function isJsonContentType(value: string | null): boolean {
+  return value?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
+}
+
+function isRecord(value: unknown): value is VerifyRequestBody {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }

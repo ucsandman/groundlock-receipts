@@ -35,6 +35,8 @@ The web app also exposes optional public status routes at `/groundlock/status/ke
 
 ### Request
 
+Use `Content-Type: application/json` and send a JSON object with exactly one public verification input.
+
 Send exactly one of:
 
 ```json
@@ -58,6 +60,9 @@ Remote URL verification is intentionally rejected:
 - JSON responses use `Cache-Control: no-store`.
 - Remote URL fetching is not supported by the public endpoint.
 - Publisher signing is not supported by the public endpoint.
+- Non-JSON requests return HTTP `415` with `code: "unsupported_content_type"`.
+- Malformed JSON returns HTTP `400` with `code: "invalid_json"`.
+- Valid JSON that is not an object returns HTTP `400` with `code: "invalid_input"`.
 - Unknown, malformed, missing, or oversized input fails closed.
 
 The verifier uses one in-memory public bucket by default because spoofable forwarding headers are not trusted as client identity. Tune `GROUNDLOCK_RATE_LIMIT_MAX` and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS` at the deployment edge for launch traffic. A limited response returns HTTP `429` with `Retry-After`.
