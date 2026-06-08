@@ -2,6 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import {
+  exportWebEnv,
   localPublish,
   setupDomainRecords,
   signFile,
@@ -54,6 +55,15 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       });
       process.stdout.write(`${result.state} ${result.code} - ${result.explanation}\n`);
       return result.state === "PASS" ? 0 : 2;
+    }
+    if (command === "export-web-env") {
+      requireValue(first, "dns-fixture");
+      process.stdout.write(await exportWebEnv({
+        fixturePath: first,
+        statusBaseUrl: requireFlag(opts, "status-base-url"),
+        dohEndpoint: opts["doh-endpoint"],
+      }));
+      return 0;
     }
     if (command === "setup-domain") {
       requireValue(first, "domain");
@@ -149,6 +159,7 @@ function help(): string {
     "groundlock sign <file> --source <json> --domain <domain> --kid <kid> --key <jwk> [--out <receipt>] [--c2pa-sidecar <json>] [--receipt-ref <url-or-path>] [--asset-format <media-type>]",
     "groundlock verify <file|hash> --fixture <dns-fixture.json> [--domain <domain>]",
     "groundlock check-live <file|hash> --domain <domain> --status-base-url <url> [--doh-endpoint <url>]",
+    "groundlock export-web-env <dns-fixture.json> --status-base-url <url> [--doh-endpoint <url>]",
     "groundlock setup-domain <domain> --receipt <receipt.json> --public-key <jwk> [--chunk-size <chars>]",
     "groundlock local-publish <file> --source <json> --domain <domain> --kid <kid> --key <jwk> --public-key <jwk> --out <dir>",
   ].join("\n") + "\n";

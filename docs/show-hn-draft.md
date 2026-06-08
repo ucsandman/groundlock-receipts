@@ -41,6 +41,7 @@ docs/quickstart-60-second-verify.md signs a local sample, writes local DNS-cache
 
 Deployment notes:
 docs/deployment.md documents live verifier mode with GROUNDLOCK_SIGNER_DOMAIN, DNS-over-HTTPS TXT lookups, resolver-cache warming, and HTTP key/claim status endpoints.
+`groundlock export-web-env <dns-fixture.json> --status-base-url <url>` prints the deploy env block for the public web verifier.
 The release gate is `groundlock check-live <file-or-hash> --domain <domain> --status-base-url <url>` returning PASS against the configured resolver path.
 
 Before removing LOCAL_DEMO_ONLY, deployment needs:

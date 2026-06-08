@@ -65,6 +65,42 @@ describe("CLI entrypoint", () => {
     expect(out).toContain("cache-chunk");
   });
 
+  it("prints a web verifier env bundle from a local fixture", async () => {
+    const { dir, sourcePath, blockedPath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const outDir = path.join(dir, "publish");
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await main([
+      "local-publish",
+      blockedPath,
+      "--source",
+      sourcePath,
+      "--domain",
+      "publisher.example",
+      "--kid",
+      key.kid,
+      "--key",
+      JSON.stringify(key.privateKeyJwk),
+      "--public-key",
+      JSON.stringify(key.publicKeyJwk),
+      "--out",
+      outDir,
+    ]);
+    stdout.mockClear();
+
+    const code = await main([
+      "export-web-env",
+      path.join(outDir, "dns-fixture.json"),
+      "--status-base-url",
+      "https://publisher.example/groundlock/status",
+    ]);
+
+    expect(code).toBe(0);
+    const out = stdout.mock.calls.map((call) => String(call[0])).join("");
+    expect(out).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.example");
+    expect(out).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
+  });
+
   it("checks a live DNS-cache verifier deployment through DoH and status endpoints", async () => {
     const signerDomain = "publisher.example";
     const key = generateSigningKey("live-key");

@@ -80,10 +80,11 @@ PASS verified - DNS cache receipt verified
 After publishing real TXT records and status endpoints, verify the public path with:
 
 ```powershell
+groundlock export-web-env (Join-Path $publishDir "dns-fixture.json") --status-base-url https://publisher.example/groundlock/status
 groundlock check-live $samplePath --domain publisher.example --status-base-url https://publisher.example/groundlock/status
 ```
 
-That command uses DNS-over-HTTPS TXT lookups plus public key/claim status endpoints. It returns PASS only when the deployed resolver and status path can reconstruct and verify the receipt.
+`export-web-env` prints the web deployment variables, including `GROUNDLOCK_STATUS_RECORDS_JSON`. `check-live` uses DNS-over-HTTPS TXT lookups plus public key/claim status endpoints. It returns PASS only when the deployed resolver and status path can reconstruct and verify the receipt.
 
 ## Emit a C2PA interop sidecar
 

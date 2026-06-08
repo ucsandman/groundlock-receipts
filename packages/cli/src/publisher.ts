@@ -77,6 +77,12 @@ export interface VerifyLiveOptions {
   statusBaseUrl: string;
 }
 
+export interface ExportWebEnvOptions {
+  fixturePath: string;
+  statusBaseUrl: string;
+  dohEndpoint?: string;
+}
+
 interface DnsFixture {
   domain: string;
   txt: Record<string, string[]>;
@@ -185,6 +191,18 @@ export async function verifyLive(opts: VerifyLiveOptions): Promise<TrueNameVerif
     ...createDohTxtResolver(fetcher, opts.dohEndpoint),
     statusResolver: createHttpStatusResolver(fetcher, opts.statusBaseUrl),
   });
+}
+
+export async function exportWebEnv(opts: ExportWebEnvOptions): Promise<string> {
+  const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
+  const records = [fixture.status.key, fixture.status.claim];
+  const lines = [
+    `GROUNDLOCK_SIGNER_DOMAIN=${fixture.domain}`,
+    ...(opts.dohEndpoint ? [`GROUNDLOCK_DOH_ENDPOINT=${opts.dohEndpoint}`] : []),
+    `GROUNDLOCK_STATUS_BASE_URL=${opts.statusBaseUrl}`,
+    `GROUNDLOCK_STATUS_RECORDS_JSON=${JSON.stringify(records)}`,
+  ];
+  return `${lines.join("\n")}\n`;
 }
 
 async function readTextCapped(filePath: string): Promise<string> {

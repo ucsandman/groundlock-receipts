@@ -64,6 +64,12 @@ GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status
 GROUNDLOCK_STATUS_RECORDS_JSON=[...public key and claim status records...]
 ```
 
+Generate the full web env block from a local publish fixture:
+
+```powershell
+groundlock export-web-env .\published\dns-fixture.json --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
+```
+
 Return the JSON status record directly:
 
 ```json
@@ -91,6 +97,7 @@ Use HTTP `404` for missing status records. Use `revoked`, `retracted`, or `compr
 ## Release checklist
 
 - Public HTTPS verifier deployed.
+- Web env generated with `groundlock export-web-env` and installed in the deployment.
 - `GROUNDLOCK_SIGNER_DOMAIN` points at the publisher domain.
 - `GROUNDLOCK_STATUS_BASE_URL` serves key and claim status JSON.
 - DNS TXT identity, manifest, and chunk records are published.

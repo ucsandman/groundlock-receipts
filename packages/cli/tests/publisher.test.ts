@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { generateSigningKey, parseCacheManifestRecord } from "@groundlock/core";
 import {
   localPublish,
+  exportWebEnv,
   setupDomainRecords,
   signFile,
   verifyWithFixture,
@@ -86,6 +87,36 @@ describe("publisher SDK", () => {
     await expect(verifyWithFixture({ input: filePath, fixturePath: published.fixturePath, domain: "publisher.example" })).resolves.toEqual(
       expect.objectContaining({ state: "REVOKED" }),
     );
+  });
+
+  it("exports a pasteable web verifier env block from local publish fixtures", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const publishDir = path.join(dir, "publish");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: publishDir,
+    });
+
+    const env = await exportWebEnv({
+      fixturePath: published.fixturePath,
+      statusBaseUrl: "https://publisher.example/groundlock/status",
+      dohEndpoint: "https://resolver.example/dns-query",
+    });
+
+    expect(env).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.example");
+    expect(env).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.example/dns-query");
+    expect(env).toContain("GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status");
+    expect(env).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
+    expect(env).toContain('"kind":"key"');
+    expect(env).toContain('"kind":"claim"');
+    expect(env).not.toContain("privateKeyJwk");
+    expect(env).not.toContain("publicKeyJwk");
   });
 
   it("prints DNS cache records without HTTPS receipt storage or DNS mutation", async () => {
