@@ -252,6 +252,73 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(bad.ok)
         self.assertIn("UNVERIFIABLE", bad.detail)
 
+    def test_dns_fixture_preflight_accepts_launch_domain_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "receipts.groundlock.dev",
+                        "txt": {
+                            "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
+                            "gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                            ],
+                            "c0.gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdc1 i=0 d=abc"
+                            ],
+                        },
+                        "status": {
+                            "key": {
+                                "version": "groundlock-status/v1",
+                                "kind": "key",
+                            },
+                            "claim": {
+                                "version": "groundlock-status/v1",
+                                "kind": "claim",
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev"
+            )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.name, "dns-fixture")
+
+    def test_dns_fixture_preflight_rejects_wrong_domain_or_missing_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "other.groundlock.dev",
+                        "txt": {
+                            "_truename.other.groundlock.dev": ["glt1 kid=k1"],
+                        },
+                        "status": {
+                            "key": {
+                                "version": "groundlock-status/v1",
+                                "kind": "key",
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev"
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("domain", result.detail)
+        self.assertIn("claim", result.detail)
+
     def test_homepage_metadata_accepts_public_launch_origin(self) -> None:
         html = """
         <html>
@@ -352,6 +419,7 @@ class HnReadinessTests(unittest.TestCase):
         with (
             mock.patch.object(hn_readiness, "check_git_clean", return_value=ok),
             mock.patch.object(hn_readiness, "check_show_hn_draft", return_value=ok),
+            mock.patch.object(hn_readiness, "check_dns_fixture", return_value=ok),
             mock.patch.object(
                 hn_readiness,
                 "check_ci",
@@ -361,8 +429,43 @@ class HnReadinessTests(unittest.TestCase):
             results = hn_readiness.run_checks(args)
 
         self.assertEqual(
-            [result.name for result in results], ["mock", "mock", "launch-targets"]
+            [result.name for result in results],
+            ["mock", "mock", "launch-targets", "mock"],
         )
+        self.assertFalse(results[2].ok)
+
+    def test_run_checks_stops_before_external_checks_when_dns_fixture_fails(
+        self,
+    ) -> None:
+        args = SimpleNamespace(
+            health_url="https://receipts.groundlock.dev",
+            status_base_url="https://receipts.groundlock.dev/groundlock/status",
+            doh_endpoint="https://resolver.groundlock.dev/dns-query",
+            domain="receipts.groundlock.dev",
+            show_hn_draft="ignored.md",
+            repo="ucsandman/groundlock-receipts",
+            branch="main",
+            dns_fixture="missing.json",
+            file_or_hash="sha256:abc123",
+        )
+
+        ok = hn_readiness.CheckResult("mock", True, "ok")
+        fixture_fail = hn_readiness.CheckResult("dns-fixture", False, "missing")
+        with (
+            mock.patch.object(hn_readiness, "check_git_clean", return_value=ok),
+            mock.patch.object(hn_readiness, "check_show_hn_draft", return_value=ok),
+            mock.patch.object(
+                hn_readiness, "check_dns_fixture", return_value=fixture_fail
+            ),
+            mock.patch.object(
+                hn_readiness,
+                "check_ci",
+                side_effect=AssertionError("external checks should not run"),
+            ),
+        ):
+            results = hn_readiness.run_checks(args)
+
+        self.assertEqual(results[-1].name, "dns-fixture")
         self.assertFalse(results[-1].ok)
 
     def test_run_checks_includes_deployed_web_verify_after_preflight(self) -> None:
@@ -383,6 +486,7 @@ class HnReadinessTests(unittest.TestCase):
         with (
             mock.patch.object(hn_readiness, "check_git_clean", return_value=ok),
             mock.patch.object(hn_readiness, "check_show_hn_draft", return_value=ok),
+            mock.patch.object(hn_readiness, "check_dns_fixture", return_value=ok),
             mock.patch.object(hn_readiness, "check_ci", return_value=ok),
             mock.patch.object(hn_readiness, "check_health_url", return_value=ok),
             mock.patch.object(hn_readiness, "check_homepage_metadata", return_value=ok),

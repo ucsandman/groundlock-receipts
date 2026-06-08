@@ -403,6 +403,95 @@ def check_web_verify(url: str, file_or_hash: str, timeout: float = 10.0) -> Chec
     return validate_web_verify_body(body)
 
 
+def check_dns_fixture(path: str, domain: str) -> CheckResult:
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except OSError as exc:
+        return CheckResult("dns-fixture", False, f"could not read {path}: {exc}")
+    except json.JSONDecodeError as exc:
+        return CheckResult("dns-fixture", False, f"invalid JSON: {exc}")
+
+    if not isinstance(data, dict):
+        return CheckResult("dns-fixture", False, "fixture is not a JSON object")
+
+    expected_domain = normalize_domain(domain)
+    failures = []
+    fixture_domain = data.get("domain")
+    if not isinstance(fixture_domain, str):
+        failures.append("fixture domain is missing")
+    elif normalize_domain(fixture_domain) != expected_domain:
+        failures.append(
+            f"fixture domain {fixture_domain!r} does not match launch domain {domain!r}"
+        )
+
+    txt = data.get("txt")
+    if not isinstance(txt, dict) or not txt:
+        failures.append("fixture txt records are missing")
+    else:
+        failures.extend(validate_fixture_txt_records(txt, expected_domain))
+
+    status = data.get("status")
+    if not isinstance(status, dict):
+        failures.append("fixture status records are missing")
+    else:
+        key = status.get("key")
+        claim = status.get("claim")
+        if not isinstance(key, dict) or key.get("kind") != "key":
+            failures.append("fixture key status record is missing")
+        if not isinstance(claim, dict) or claim.get("kind") != "claim":
+            failures.append("fixture claim status record is missing")
+
+    if failures:
+        return CheckResult("dns-fixture", False, "; ".join(failures))
+    return CheckResult(
+        "dns-fixture", True, "fixture domain, TXT records, and statuses match launch"
+    )
+
+
+def validate_fixture_txt_records(
+    txt: dict[object, object], expected_domain: str
+) -> list[str]:
+    failures = []
+    normalized: dict[str, list[str]] = {}
+    for name, values in txt.items():
+        if (
+            not isinstance(name, str)
+            or not isinstance(values, list)
+            or not all(isinstance(value, str) for value in values)
+        ):
+            failures.append("fixture TXT answers must map names to string arrays")
+            break
+        normalized[normalize_domain(name)] = values
+
+    identity_name = f"_truename.{expected_domain}"
+    if identity_name not in normalized:
+        failures.append(f"fixture identity TXT record is missing: {identity_name}")
+
+    manifest_suffix = f"._groundlock.{expected_domain}"
+    manifest_found = any(
+        name.endswith(manifest_suffix)
+        and any(value.startswith("gdm1 ") for value in values)
+        for name, values in normalized.items()
+    )
+    if not manifest_found:
+        failures.append("fixture cache manifest TXT record is missing")
+
+    chunk_found = any(
+        name.startswith("c")
+        and name.endswith(manifest_suffix)
+        and any(value.startswith("gdc1 ") for value in values)
+        for name, values in normalized.items()
+    )
+    if not chunk_found:
+        failures.append("fixture cache chunk TXT records are missing")
+
+    return failures
+
+
+def normalize_domain(value: str) -> str:
+    return value.strip().rstrip(".").lower()
+
+
 def build_check_live_argv(
     file_or_hash: str,
     domain: str,
@@ -568,6 +657,7 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
         check_git_clean(),
         check_show_hn_draft(Path(args.show_hn_draft)),
         check_launch_targets(args),
+        check_dns_fixture(args.dns_fixture, args.domain),
     ]
     if any(not result.ok for result in preflight):
         return preflight
