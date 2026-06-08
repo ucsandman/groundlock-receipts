@@ -52,7 +52,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - stable publisher signing key managed outside the public verifier
 - configured `GROUNDLOCK_DOH_ENDPOINT` matching the resolver path used by `warm-cache`, `check-live`, and `hn_readiness.py`
 - configured GROUNDLOCK_SIGNER_DOMAIN, GROUNDLOCK_STATUS_BASE_URL, and valid public key/claim status record source
-- deployed `/api/health` returning 200
+- deployed `/api/health` returning 200, including bundled status record readiness for same-origin status deployments
 - public homepage title, canonical URL, and share metadata matching the deployed public verifier origin
 - container build and healthcheck evidence, if deploying by container
 - _truename.<domain> TXT identity record

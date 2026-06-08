@@ -59,6 +59,51 @@ class HnReadinessTests(unittest.TestCase):
 
         self.assertTrue(response.ok)
 
+    def test_health_check_requires_status_records_for_same_origin_status(self) -> None:
+        response = hn_readiness.validate_health_body(
+            json.dumps(
+                {
+                    "service": "groundlock-web",
+                    "ok": True,
+                    "mode": "live",
+                    "checks": {
+                        "signerDomainConfigured": True,
+                        "siteUrlConfigured": True,
+                        "dohEndpointConfigured": True,
+                        "statusBaseUrlConfigured": True,
+                        "statusRecordsConfigured": False,
+                    },
+                }
+            ),
+            health_url="https://receipts.groundlock.dev/api/health",
+            status_base_url="https://receipts.groundlock.dev/groundlock/status",
+        )
+
+        self.assertFalse(response.ok)
+        self.assertIn("statusRecordsConfigured", response.detail)
+
+    def test_health_check_allows_external_status_records_without_bundle(self) -> None:
+        response = hn_readiness.validate_health_body(
+            json.dumps(
+                {
+                    "service": "groundlock-web",
+                    "ok": True,
+                    "mode": "live",
+                    "checks": {
+                        "signerDomainConfigured": True,
+                        "siteUrlConfigured": True,
+                        "dohEndpointConfigured": True,
+                        "statusBaseUrlConfigured": True,
+                        "statusRecordsConfigured": False,
+                    },
+                }
+            ),
+            health_url="https://receipts.groundlock.dev",
+            status_base_url="https://publisher.groundlock.dev/groundlock/status",
+        )
+
+        self.assertTrue(response.ok)
+
     def test_health_check_requires_deployed_doh_endpoint_for_launch(self) -> None:
         response = hn_readiness.validate_health_body(
             json.dumps(

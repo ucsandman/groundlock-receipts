@@ -97,7 +97,9 @@ def check_show_hn_draft(path: Path = DEFAULT_DRAFT_PATH) -> CheckResult:
     return CheckResult("show-hn-draft", True, "draft no longer marked LOCAL_DEMO_ONLY")
 
 
-def validate_health_body(body: str) -> CheckResult:
+def validate_health_body(
+    body: str, health_url: str | None = None, status_base_url: str | None = None
+) -> CheckResult:
     try:
         data = json.loads(body)
     except json.JSONDecodeError as exc:
@@ -130,6 +132,15 @@ def validate_health_body(body: str) -> CheckResult:
         return CheckResult(
             "health", False, f"missing live health checks: {', '.join(missing)}"
         )
+    if (
+        uses_same_origin_status(health_url, status_base_url)
+        and checks.get("statusRecordsConfigured") is not True
+    ):
+        return CheckResult(
+            "health",
+            False,
+            "missing live health checks: statusRecordsConfigured",
+        )
 
     return CheckResult("health", True, "deployed verifier reports live mode ready")
 
@@ -148,6 +159,23 @@ def homepage_url(url: str) -> str:
         return urlunparse(parsed)
     clean = url.strip().rstrip("/")
     return f"{clean}/"
+
+
+def uses_same_origin_status(
+    health_url: str | None, status_base_url: str | None
+) -> bool:
+    if health_url is None or status_base_url is None:
+        return False
+    health_origin = url_origin(homepage_url(health_url))
+    status_origin = url_origin(status_base_url)
+    return health_origin is not None and health_origin == status_origin
+
+
+def url_origin(value: str) -> str | None:
+    parsed = urlparse(value.strip())
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    return urlunparse(parsed._replace(path="", params="", query="", fragment=""))
 
 
 def check_launch_targets(args: argparse.Namespace) -> CheckResult:
@@ -201,7 +229,9 @@ def validate_public_domain(label: str, value: str) -> list[str]:
     return []
 
 
-def check_health_url(url: str, timeout: float = 10.0) -> CheckResult:
+def check_health_url(
+    url: str, status_base_url: str | None = None, timeout: float = 10.0
+) -> CheckResult:
     endpoint = health_endpoint(url)
     request = urllib.request.Request(
         endpoint, headers={"User-Agent": "groundlock-hn-readiness/1"}
@@ -216,7 +246,7 @@ def check_health_url(url: str, timeout: float = 10.0) -> CheckResult:
     except Exception as exc:
         return CheckResult("health", False, f"{endpoint} failed: {exc}")
 
-    return validate_health_body(body)
+    return validate_health_body(body, health_url=url, status_base_url=status_base_url)
 
 
 def extract_metadata(html: str) -> MetadataExtractor:
@@ -461,7 +491,7 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
     return [
         *preflight,
         check_ci(args.repo, args.branch),
-        check_health_url(args.health_url),
+        check_health_url(args.health_url, args.status_base_url),
         check_homepage_metadata(args.health_url),
         check_warm_cache(args.dns_fixture, args.doh_endpoint),
         check_live_receipt(
