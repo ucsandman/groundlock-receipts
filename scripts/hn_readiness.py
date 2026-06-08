@@ -52,6 +52,13 @@ class CheckResult:
     detail: str
 
 
+@dataclass(frozen=True)
+class FixtureManifest:
+    receipt_hash: str
+    signer_domain: str
+    kid: str
+
+
 class MetadataExtractor(html.parser.HTMLParser):
     def __init__(self) -> None:
         super().__init__()
@@ -435,10 +442,12 @@ def check_dns_fixture(path: str, domain: str, file_or_hash: str) -> CheckResult:
     txt = data.get("txt")
     if not isinstance(txt, dict) or not txt:
         failures.append("fixture txt records are missing")
+        manifest = None
     else:
-        failures.extend(
-            validate_fixture_txt_records(txt, expected_domain, content_hash)
+        txt_failures, manifest = validate_fixture_txt_records(
+            txt, expected_domain, content_hash
         )
+        failures.extend(txt_failures)
 
     status = data.get("status")
     if not isinstance(status, dict):
@@ -448,8 +457,12 @@ def check_dns_fixture(path: str, domain: str, file_or_hash: str) -> CheckResult:
         claim = status.get("claim")
         if not isinstance(key, dict) or key.get("kind") != "key":
             failures.append("fixture key status record is missing")
+        elif manifest is not None:
+            failures.extend(validate_key_status_record(key, manifest))
         if not isinstance(claim, dict) or claim.get("kind") != "claim":
             failures.append("fixture claim status record is missing")
+        elif manifest is not None:
+            failures.extend(validate_claim_status_record(claim, manifest))
 
     if failures:
         return CheckResult("dns-fixture", False, "; ".join(failures))
@@ -460,7 +473,7 @@ def check_dns_fixture(path: str, domain: str, file_or_hash: str) -> CheckResult:
 
 def validate_fixture_txt_records(
     txt: dict[object, object], expected_domain: str, content_hash: str
-) -> list[str]:
+) -> tuple[list[str], FixtureManifest | None]:
     failures = []
     normalized: dict[str, list[str]] = {}
     for name, values in txt.items():
@@ -479,11 +492,8 @@ def validate_fixture_txt_records(
 
     manifest_suffix = f"._groundlock.{expected_domain}"
     expected_manifest_name = f"gl-{cache_label(content_hash)}{manifest_suffix}"
-    manifest_found = any(
-        value.startswith("gdm1 ")
-        for value in normalized.get(expected_manifest_name, [])
-    )
-    if not manifest_found:
+    manifest = parse_fixture_manifest(normalized.get(expected_manifest_name, []))
+    if manifest is None:
         failures.append(
             f"fixture cache manifest TXT record for demo hash is missing: {expected_manifest_name}"
         )
@@ -498,11 +508,86 @@ def validate_fixture_txt_records(
     if not chunk_found:
         failures.append("fixture cache chunk TXT records for demo hash are missing")
 
+    return failures, manifest
+
+
+def parse_fixture_manifest(values: list[str]) -> FixtureManifest | None:
+    for value in values:
+        if not value.startswith("gdm1 "):
+            continue
+        parts = parse_kv_record(value, "gdm1")
+        receipt_hash = parts.get("rh")
+        key = parts.get("key")
+        if not receipt_hash or not key or "#" not in key:
+            return None
+        signer_domain, kid = key.split("#", 1)
+        if not signer_domain or not kid:
+            return None
+        return FixtureManifest(
+            receipt_hash=ensure_sha256(receipt_hash),
+            signer_domain=normalize_domain(signer_domain),
+            kid=kid,
+        )
+    return None
+
+
+def parse_kv_record(value: str, prefix: str) -> dict[str, str]:
+    tokens = value.split()
+    if not tokens or tokens[0] != prefix:
+        return {}
+    pairs = {}
+    for token in tokens[1:]:
+        if "=" not in token:
+            continue
+        key, item = token.split("=", 1)
+        pairs[key] = item
+    return pairs
+
+
+def validate_key_status_record(
+    record: dict[object, object], manifest: FixtureManifest
+) -> list[str]:
+    failures = []
+    subject = record.get("subject")
+    if not isinstance(subject, dict):
+        return ["fixture key status subject is missing"]
+    signer_domain = subject.get("signerDomain")
+    kid = subject.get("kid")
+    if (
+        not isinstance(signer_domain, str)
+        or normalize_domain(signer_domain) != manifest.signer_domain
+        or kid != manifest.kid
+    ):
+        failures.append("fixture key status does not match cache manifest key")
+    if record.get("status") != "active":
+        failures.append("fixture key status is not active")
+    return failures
+
+
+def validate_claim_status_record(
+    record: dict[object, object], manifest: FixtureManifest
+) -> list[str]:
+    failures = []
+    subject = record.get("subject")
+    if not isinstance(subject, dict):
+        return ["fixture claim status subject is missing"]
+    receipt_hash = subject.get("receiptHash")
+    if (
+        not isinstance(receipt_hash, str)
+        or ensure_sha256(receipt_hash) != manifest.receipt_hash
+    ):
+        failures.append("fixture claim status does not match cache manifest receipt")
+    if record.get("status") != "active":
+        failures.append("fixture claim status is not active")
     return failures
 
 
 def normalize_domain(value: str) -> str:
     return value.strip().rstrip(".").lower()
+
+
+def ensure_sha256(value: str) -> str:
+    return value if value.startswith("sha256:") else f"sha256:{value}"
 
 
 def content_hash_for_input(file_or_hash: str) -> str:

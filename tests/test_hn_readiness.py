@@ -272,10 +272,17 @@ class HnReadinessTests(unittest.TestCase):
                             "key": {
                                 "version": "groundlock-status/v1",
                                 "kind": "key",
+                                "subject": {
+                                    "signerDomain": "receipts.groundlock.dev",
+                                    "kid": "k1",
+                                },
+                                "status": "active",
                             },
                             "claim": {
                                 "version": "groundlock-status/v1",
                                 "kind": "claim",
+                                "subject": {"receiptHash": "sha256:abc"},
+                                "status": "active",
                             },
                         },
                     }
@@ -304,6 +311,11 @@ class HnReadinessTests(unittest.TestCase):
                             "key": {
                                 "version": "groundlock-status/v1",
                                 "kind": "key",
+                                "subject": {
+                                    "signerDomain": "other.groundlock.dev",
+                                    "kid": "k1",
+                                },
+                                "status": "active",
                             },
                         },
                     }
@@ -341,10 +353,17 @@ class HnReadinessTests(unittest.TestCase):
                             "key": {
                                 "version": "groundlock-status/v1",
                                 "kind": "key",
+                                "subject": {
+                                    "signerDomain": "receipts.groundlock.dev",
+                                    "kid": "k1",
+                                },
+                                "status": "active",
                             },
                             "claim": {
                                 "version": "groundlock-status/v1",
                                 "kind": "claim",
+                                "subject": {"receiptHash": "sha256:abc"},
+                                "status": "active",
                             },
                         },
                     }
@@ -358,6 +377,54 @@ class HnReadinessTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn("demo hash", result.detail)
+
+    def test_dns_fixture_preflight_rejects_status_records_for_wrong_manifest(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "receipts.groundlock.dev",
+                        "txt": {
+                            "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
+                            "gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdm1 rh=receipt-abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                            ],
+                            "c0.gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdc1 i=0 d=abc"
+                            ],
+                        },
+                        "status": {
+                            "key": {
+                                "version": "groundlock-status/v1",
+                                "kind": "key",
+                                "subject": {
+                                    "signerDomain": "receipts.groundlock.dev",
+                                    "kid": "other-key",
+                                },
+                                "status": "active",
+                            },
+                            "claim": {
+                                "version": "groundlock-status/v1",
+                                "kind": "claim",
+                                "subject": {"receiptHash": "sha256:other-receipt"},
+                                "status": "active",
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("key status", result.detail)
+        self.assertIn("claim status", result.detail)
 
     def test_dns_fixture_preflight_hashes_file_input_with_groundlock_canonicalization(
         self,
@@ -385,10 +452,17 @@ class HnReadinessTests(unittest.TestCase):
                             "key": {
                                 "version": "groundlock-status/v1",
                                 "kind": "key",
+                                "subject": {
+                                    "signerDomain": "receipts.groundlock.dev",
+                                    "kid": "k1",
+                                },
+                                "status": "active",
                             },
                             "claim": {
                                 "version": "groundlock-status/v1",
                                 "kind": "claim",
+                                "subject": {"receiptHash": "sha256:abc"},
+                                "status": "active",
                             },
                         },
                     }
