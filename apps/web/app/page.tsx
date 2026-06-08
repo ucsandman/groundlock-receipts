@@ -1,6 +1,14 @@
 import Image from "next/image";
 import { VerifierWidget } from "../components/VerifierWidget";
-import { HowItWorks, MarketingNav, OssPresence, Pricing, ThreatModelSummary } from "../components/MarketingSections";
+import {
+  CacheMechanism,
+  MarketingNav,
+  OssPresence,
+  Pricing,
+  PublicGood,
+  ResolverCacheProof,
+  ThreatModelSummary,
+} from "../components/MarketingSections";
 
 export default function Home() {
   return (
@@ -20,10 +28,10 @@ export default function Home() {
           <div className="max-w-2xl">
             <p className="text-sm font-bold uppercase text-[var(--brass)]">GroundLock Receipts</p>
             <h1 className="mt-3 font-[family-name:var(--font-display)] text-5xl font-semibold leading-none md:text-7xl">
-              GroundLock Receipts
+              Store the proof in DNS cache.
             </h1>
             <p className="mt-5 text-xl font-bold leading-8">
-              Signed AI-message receipts stored in DNS resolver caches.
+              DNSFS-style receipt storage for AI-generated business messages.
             </p>
           </div>
 
@@ -31,8 +39,8 @@ export default function Home() {
 
           <div className="max-w-2xl lg:col-start-1">
             <p className="mt-5 max-w-xl leading-7 text-[var(--muted-ink)]">
-              A counterparty should not need your app, your account system, or your promise to check whether a message
-              was grounded. Paste text content or a GroundLock hash and the verifier reconstructs the proof from DNS cache chunks.
+              The message is checked, the receipt is signed, and the proof is sliced into DNS TXT chunks. Verifiers
+              reconstruct it from resolver-cache answers instead of trusting a vendor-hosted screenshot.
             </p>
             <div className="mt-7 grid max-w-xl grid-cols-1 border border-[var(--line)] bg-[var(--paper)] md:grid-cols-3">
               {["Public verify is free", "DNS cache is storage", "Receipts fail closed"].map((item) => (
@@ -53,7 +61,9 @@ export default function Home() {
         </div>
       </section>
 
-      <HowItWorks />
+      <ResolverCacheProof />
+      <CacheMechanism />
+      <PublicGood />
       <ThreatModelSummary />
       <Pricing />
       <OssPresence />
