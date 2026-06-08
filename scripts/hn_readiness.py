@@ -5,18 +5,35 @@ from __future__ import annotations
 
 import argparse
 import json
+import ipaddress
 import shutil
 import subprocess
 import sys
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = ROOT / "packages" / "cli" / "dist" / "cli.js"
 DEFAULT_DRAFT_PATH = ROOT / "docs" / "show-hn-draft.md"
 DEFAULT_REPO = "ucsandman/groundlock-receipts"
+RESERVED_HOSTS = {
+    "example.com",
+    "example.net",
+    "example.org",
+    "localhost",
+}
+RESERVED_SUFFIXES = (
+    ".example",
+    ".example.com",
+    ".example.net",
+    ".example.org",
+    ".invalid",
+    ".localhost",
+    ".test",
+)
 
 
 @dataclass(frozen=True)
@@ -76,6 +93,55 @@ def health_endpoint(url: str) -> str:
     if clean.endswith("/api/health"):
         return clean
     return f"{clean}/api/health"
+
+
+def check_launch_targets(args: argparse.Namespace) -> CheckResult:
+    failures = []
+    for label, url in [
+        ("health-url", args.health_url),
+        ("status-base-url", args.status_base_url),
+    ]:
+        failures.extend(validate_public_https_url(label, url))
+    if args.doh_endpoint:
+        failures.extend(validate_public_https_url("doh-endpoint", args.doh_endpoint))
+    failures.extend(validate_public_domain("domain", args.domain))
+
+    if failures:
+        return CheckResult("launch-targets", False, "; ".join(failures))
+    return CheckResult(
+        "launch-targets", True, "launch URLs and signer domain are public HTTPS"
+    )
+
+
+def validate_public_https_url(label: str, value: str) -> list[str]:
+    parsed = urlparse(value.strip())
+    failures = []
+    if parsed.scheme != "https":
+        failures.append(f"{label} must use https")
+    if not parsed.hostname:
+        failures.append(f"{label} must include a hostname")
+        return failures
+    failures.extend(validate_public_domain(label, parsed.hostname))
+    return failures
+
+
+def validate_public_domain(label: str, value: str) -> list[str]:
+    host = value.strip().rstrip(".").lower()
+    if not host:
+        return [f"{label} is empty"]
+    if "://" in host:
+        return [f"{label} must be a domain, not a URL"]
+    if host in RESERVED_HOSTS or host.endswith(RESERVED_SUFFIXES):
+        return [f"{label} uses a reserved placeholder host: {value}"]
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        if "." not in host:
+            return [f"{label} must be a public DNS name"]
+        return []
+    if not ip.is_global:
+        return [f"{label} must not use a private or local IP address: {value}"]
+    return []
 
 
 def check_health_url(url: str, timeout: float = 10.0) -> CheckResult:
@@ -257,9 +323,16 @@ def check_ci(repo: str, branch: str) -> CheckResult:
 
 
 def run_checks(args: argparse.Namespace) -> list[CheckResult]:
-    return [
+    preflight = [
         check_git_clean(),
         check_show_hn_draft(Path(args.show_hn_draft)),
+        check_launch_targets(args),
+    ]
+    if any(not result.ok for result in preflight):
+        return preflight
+
+    return [
+        *preflight,
         check_ci(args.repo, args.branch),
         check_health_url(args.health_url),
         check_warm_cache(args.dns_fixture, args.doh_endpoint),

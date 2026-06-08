@@ -2,6 +2,8 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 from scripts import hn_readiness
 
@@ -52,6 +54,64 @@ class HnReadinessTests(unittest.TestCase):
         )
 
         self.assertTrue(response.ok)
+
+    def test_launch_targets_reject_placeholders_local_and_non_https(self) -> None:
+        result = hn_readiness.check_launch_targets(
+            SimpleNamespace(
+                health_url="http://localhost:3000",
+                status_base_url="https://publisher.example/groundlock/status",
+                doh_endpoint="http://127.0.0.1:8053/dns-query",
+                domain="publisher.example",
+            )
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.name, "launch-targets")
+        self.assertIn("health-url must use https", result.detail)
+        self.assertIn("private or local IP", result.detail)
+        self.assertIn("reserved placeholder", result.detail)
+
+    def test_launch_targets_accept_public_https_values(self) -> None:
+        result = hn_readiness.check_launch_targets(
+            SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://cloudflare-dns.com/dns-query",
+                domain="receipts.groundlock.dev",
+            )
+        )
+
+        self.assertTrue(result.ok)
+
+    def test_run_checks_stops_before_external_checks_when_preflight_fails(self) -> None:
+        args = SimpleNamespace(
+            health_url="http://localhost:3000",
+            status_base_url="https://publisher.example/groundlock/status",
+            doh_endpoint=None,
+            domain="publisher.example",
+            show_hn_draft="ignored.md",
+            repo="ucsandman/groundlock-receipts",
+            branch="main",
+            dns_fixture="published/dns-fixture.json",
+            file_or_hash="sha256:abc123",
+        )
+
+        ok = hn_readiness.CheckResult("mock", True, "ok")
+        with (
+            mock.patch.object(hn_readiness, "check_git_clean", return_value=ok),
+            mock.patch.object(hn_readiness, "check_show_hn_draft", return_value=ok),
+            mock.patch.object(
+                hn_readiness,
+                "check_ci",
+                side_effect=AssertionError("external checks should not run"),
+            ),
+        ):
+            results = hn_readiness.run_checks(args)
+
+        self.assertEqual(
+            [result.name for result in results], ["mock", "mock", "launch-targets"]
+        )
+        self.assertFalse(results[-1].ok)
 
     def test_builds_local_check_live_command_without_shell(self) -> None:
         argv = hn_readiness.build_check_live_argv(
