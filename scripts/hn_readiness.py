@@ -813,13 +813,21 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
         )
         if status_records_result:
             failures.append(status_records_result)
+        web_env_result = validate_launch_kit_web_env(
+            root / LAUNCH_KIT_ARTIFACTS["webEnv"],
+            args,
+            fixture_status_records,
+            expected_site_url,
+        )
+        if web_env_result:
+            failures.append(web_env_result)
 
     if failures:
         return CheckResult("launch-kit", False, "; ".join(failures))
     return CheckResult(
         "launch-kit",
         True,
-        "launch summary, fixture receipt metadata, status records, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
+        "launch summary, fixture receipt metadata, web env, status records, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
     )
 
 
@@ -859,6 +867,81 @@ def validate_launch_kit_status_records(
         return "status-records.json must contain only JSON objects"
     if canonical_json(records) != canonical_json(fixture_status_records):
         return "status-records.json does not match DNS fixture status records"
+    return None
+
+
+def parse_web_env(text: str) -> tuple[dict[str, str], list[str]]:
+    entries: dict[str, str] = {}
+    failures = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if "=" not in line:
+            failures.append(f"web.env line {line_number} is missing '='")
+            continue
+        key, value = line.split("=", 1)
+        if key != key.strip() or not key:
+            failures.append(f"web.env line {line_number} has an invalid key")
+            continue
+        if not re.fullmatch(r"[A-Z0-9_]+", key):
+            failures.append(f"web.env line {line_number} has unsupported key {key!r}")
+            continue
+        if key in entries:
+            failures.append(f"web.env repeats key {key!r}")
+        entries[key] = value
+    return entries, failures
+
+
+def validate_launch_kit_web_env(
+    path: Path,
+    args: argparse.Namespace,
+    fixture_status_records: list[dict[str, object]],
+    expected_site_url: str | None,
+) -> str | None:
+    try:
+        entries, failures = parse_web_env(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return f"could not read {path}: {exc}"
+    if failures:
+        return "; ".join(failures)
+
+    required = {
+        "GROUNDLOCK_SIGNER_DOMAIN",
+        "NEXT_PUBLIC_SITE_URL",
+        "GROUNDLOCK_DOH_ENDPOINT",
+        "GROUNDLOCK_STATUS_BASE_URL",
+        "GROUNDLOCK_STATUS_RECORDS_JSON",
+    }
+    missing = sorted(required - set(entries))
+    if missing:
+        return f"web.env is missing {', '.join(missing)}"
+
+    web_env_failures = []
+    signer_domain = entries["GROUNDLOCK_SIGNER_DOMAIN"]
+    if normalize_domain(signer_domain) != normalize_domain(args.domain):
+        web_env_failures.append("web.env signer domain does not match readiness input")
+    if entries["NEXT_PUBLIC_SITE_URL"] != expected_site_url:
+        web_env_failures.append("web.env site URL does not match health-url origin")
+    if entries["GROUNDLOCK_DOH_ENDPOINT"] != args.doh_endpoint:
+        web_env_failures.append("web.env DoH endpoint does not match readiness input")
+    if entries["GROUNDLOCK_STATUS_BASE_URL"] != args.status_base_url:
+        web_env_failures.append(
+            "web.env status base URL does not match readiness input"
+        )
+    try:
+        bundled_status_records = json.loads(entries["GROUNDLOCK_STATUS_RECORDS_JSON"])
+    except json.JSONDecodeError as exc:
+        web_env_failures.append(f"web.env status records JSON is invalid: {exc}")
+    else:
+        if canonical_json(bundled_status_records) != canonical_json(
+            fixture_status_records
+        ):
+            web_env_failures.append(
+                "web.env status records JSON does not match DNS fixture status records"
+            )
+
+    if web_env_failures:
+        return "; ".join(web_env_failures)
     return None
 
 

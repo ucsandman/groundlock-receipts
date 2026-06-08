@@ -191,10 +191,20 @@ def write_launch_kit(
         "status": status,
     }
     status_records = [status["key"], status["claim"]]
+    status_records_json = json.dumps(status_records, separators=(",", ":"))
     artifact_contents = {
         "dnsFixture": json.dumps(fixture, indent=2, sort_keys=True) + "\n",
         "dnsZone": '_truename.receipts.groundlock.dev. 300 IN TXT "glt1"\n',
-        "webEnv": "NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev\n",
+        "webEnv": "\n".join(
+            [
+                f"GROUNDLOCK_SIGNER_DOMAIN={domain}",
+                f"NEXT_PUBLIC_SITE_URL={site_url}",
+                f"GROUNDLOCK_DOH_ENDPOINT={doh_endpoint}",
+                f"GROUNDLOCK_STATUS_BASE_URL={status_base_url}",
+                f"GROUNDLOCK_STATUS_RECORDS_JSON={status_records_json}",
+            ]
+        )
+        + "\n",
         "statusRecords": json.dumps(status_records, indent=2, sort_keys=True) + "\n",
         "hnReadiness": ".\\hn-readiness.ps1\n",
         "runbook": "groundlock warm-cache .\\dns-fixture.json\n",
@@ -1455,6 +1465,40 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn(
             "status-records.json does not match DNS fixture status records",
+            result.detail,
+        )
+
+    def test_launch_kit_check_fails_when_web_env_differs_from_fixture(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            web_env_path = kit / "web.env"
+            lines = web_env_path.read_text(encoding="utf-8").splitlines()
+            updated = [
+                (
+                    "GROUNDLOCK_STATUS_RECORDS_JSON=[]"
+                    if line.startswith("GROUNDLOCK_STATUS_RECORDS_JSON=")
+                    else line
+                )
+                for line in lines
+            ]
+            web_env_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+            refresh_launch_kit_hashes(kit)
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            "web.env status records JSON does not match DNS fixture status records",
             result.detail,
         )
 
