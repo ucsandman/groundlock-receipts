@@ -9,6 +9,8 @@ class ContainerConfigTests(unittest.TestCase):
     def test_docker_runtime_is_health_checked_and_non_root(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
+        self.assertFalse(dockerfile.startswith("# syntax="))
+        self.assertNotIn("docker/dockerfile", dockerfile)
         self.assertIn("node:24", dockerfile)
         self.assertIn("NEXT_TELEMETRY_DISABLED", dockerfile)
         self.assertIn("HEALTHCHECK", dockerfile)
