@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -121,15 +122,28 @@ export interface LaunchKitResult {
   outDir: string;
   contentHash: string;
   receiptHash: string;
-  artifacts: {
-    dnsFixture: string;
-    dnsZone: string;
-    webEnv: string;
-    statusRecords: string;
-    launchSummary: string;
-    hnReadiness: string;
-  };
+  artifacts: LaunchKitArtifacts;
 }
+
+export interface LaunchKitArtifacts {
+  dnsFixture: string;
+  dnsZone: string;
+  webEnv: string;
+  statusRecords: string;
+  launchSummary: string;
+  hnReadiness: string;
+  checksums: string;
+}
+
+const CHECKSUMMED_LAUNCH_ARTIFACTS = [
+  "dnsFixture",
+  "dnsZone",
+  "webEnv",
+  "statusRecords",
+  "hnReadiness",
+] as const satisfies ReadonlyArray<keyof LaunchKitArtifacts>;
+
+type ChecksummedLaunchArtifact = (typeof CHECKSUMMED_LAUNCH_ARTIFACTS)[number];
 
 export interface GenerateKeyFilesOptions {
   kid: string;
@@ -337,13 +351,14 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
     throw new Error("launch_receipt_not_pass");
   }
 
-  const artifactPaths = {
+  const artifactPaths: LaunchKitArtifacts = {
     dnsFixture: path.join(opts.outDir, "dns-fixture.json"),
     dnsZone: path.join(opts.outDir, "dns-zone.txt"),
     webEnv: path.join(opts.outDir, "web.env"),
     statusRecords: path.join(opts.outDir, "status-records.json"),
     launchSummary: path.join(opts.outDir, "launch-summary.json"),
     hnReadiness: path.join(opts.outDir, "hn-readiness.ps1"),
+    checksums: path.join(opts.outDir, "checksums.txt"),
   };
   await mkdir(opts.outDir, { recursive: true });
   await copyFile(opts.fixturePath, artifactPaths.dnsFixture);
@@ -359,6 +374,26 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
     "utf8",
   );
   await writeFile(artifactPaths.statusRecords, JSON.stringify([fixture.status.key, fixture.status.claim], null, 2) + "\n", "utf8");
+  await writeFile(
+    artifactPaths.hnReadiness,
+    hnReadinessPowerShell({
+      healthUrl: siteUrl,
+      statusBaseUrl,
+      dohEndpoint,
+      domain: fixture.domain,
+      fileOrHash: opts.fileOrHash,
+      repo: opts.repo ?? "ucsandman/groundlock-receipts",
+      branch: opts.branch ?? "main",
+      showHnDraft: opts.showHnDraft ?? "docs/show-hn-draft.md",
+    }),
+    "utf8",
+  );
+
+  const artifactSha256 = Object.fromEntries(
+    await Promise.all(
+      CHECKSUMMED_LAUNCH_ARTIFACTS.map(async (key) => [key, await fileSha256(artifactPaths[key])] as const),
+    ),
+  ) as Record<ChecksummedLaunchArtifact, string>;
   await writeFile(
     artifactPaths.launchSummary,
     JSON.stringify(
@@ -380,26 +415,14 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
         dnsTxtRecordCount: Object.keys(fixture.txt).length,
         statusRecordCount: 2,
         artifacts: Object.fromEntries(Object.entries(artifactPaths).map(([key, value]) => [key, path.basename(value)])),
+        artifactSha256,
       },
       null,
       2,
     ) + "\n",
     "utf8",
   );
-  await writeFile(
-    artifactPaths.hnReadiness,
-    hnReadinessPowerShell({
-      healthUrl: siteUrl,
-      statusBaseUrl,
-      dohEndpoint,
-      domain: fixture.domain,
-      fileOrHash: opts.fileOrHash,
-      repo: opts.repo ?? "ucsandman/groundlock-receipts",
-      branch: opts.branch ?? "main",
-      showHnDraft: opts.showHnDraft ?? "docs/show-hn-draft.md",
-    }),
-    "utf8",
-  );
+  await writeFile(artifactPaths.checksums, formatLaunchKitChecksums(artifactSha256, artifactPaths), "utf8");
 
   return {
     outDir: opts.outDir,
@@ -407,6 +430,17 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
     receiptHash: launch.manifest.receiptHash,
     artifacts: artifactPaths,
   };
+}
+
+async function fileSha256(filePath: string): Promise<string> {
+  return `sha256:${createHash("sha256").update(await readFile(filePath)).digest("base64url")}`;
+}
+
+function formatLaunchKitChecksums(
+  artifactSha256: Record<ChecksummedLaunchArtifact, string>,
+  artifactPaths: LaunchKitArtifacts,
+): string {
+  return CHECKSUMMED_LAUNCH_ARTIFACTS.map((key) => `${artifactSha256[key]}  ${path.basename(artifactPaths[key])}`).join("\n") + "\n";
 }
 
 async function readTextCapped(filePath: string): Promise<string> {

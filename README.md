@@ -109,7 +109,7 @@ See [docs/architecture.md](docs/architecture.md) for the data flow across core, 
 
 See [docs/deployment.md](docs/deployment.md) for production web verifier configuration, DNS TXT record requirements, resolver-cache warming, and status endpoint shapes.
 
-For public launch prep, `groundlock launch-kit <dns-fixture.json> --out <dir> ...` writes the deployment bundle from one verified fixture: `web.env`, `dns-zone.txt`, `status-records.json`, `launch-summary.json`, a copied `dns-fixture.json`, and `hn-readiness.ps1`. It refuses BLOCK receipts so the Show HN demo cannot accidentally ship a negative verification path.
+For public launch prep, `groundlock launch-kit <dns-fixture.json> --out <dir> ...` writes the deployment bundle from one verified fixture: `web.env`, `dns-zone.txt`, `status-records.json`, `launch-summary.json`, `checksums.txt`, a copied `dns-fixture.json`, and `hn-readiness.ps1`. It refuses BLOCK receipts so the Show HN demo cannot accidentally ship a negative verification path.
 
 The web verifier can run as a container:
 

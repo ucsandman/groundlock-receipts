@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -21,6 +22,10 @@ const source: SourceOfTruth = {
   allowedFacts: [{ label: "amount", value: "$2,000.00" }],
   extract: { money: true, dates: false, percentages: false },
 };
+
+async function fileSha256(filePath: string): Promise<string> {
+  return `sha256:${createHash("sha256").update(await readFile(filePath)).digest("base64url")}`;
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -160,6 +165,7 @@ describe("publisher SDK", () => {
     const statusRecords = await readFile(kit.artifacts.statusRecords, "utf8");
     const summary = JSON.parse(await readFile(kit.artifacts.launchSummary, "utf8"));
     const hnReadiness = await readFile(kit.artifacts.hnReadiness, "utf8");
+    const checksums = await readFile(kit.artifacts.checksums, "utf8");
 
     expect(kit.contentHash).toBe(summary.contentHash);
     expect(kit.receiptHash).toBe(summary.receiptHash);
@@ -170,13 +176,26 @@ describe("publisher SDK", () => {
     expect(statusRecords).toContain('"kind": "claim"');
     expect(summary.schema).toBe("groundlock-launch-kit/v1");
     expect(summary.receiptVerdict).toBe("pass");
+    expect(summary.artifacts.checksums).toBe("checksums.txt");
+    const checksumArtifacts = [
+      ["dnsFixture", kit.artifacts.dnsFixture, "dns-fixture.json"],
+      ["dnsZone", kit.artifacts.dnsZone, "dns-zone.txt"],
+      ["webEnv", kit.artifacts.webEnv, "web.env"],
+      ["statusRecords", kit.artifacts.statusRecords, "status-records.json"],
+      ["hnReadiness", kit.artifacts.hnReadiness, "hn-readiness.ps1"],
+    ] as const;
+    for (const [key, filePath, fileName] of checksumArtifacts) {
+      expect(summary.artifactSha256[key]).toBe(await fileSha256(filePath));
+      expect(checksums).toContain(`${summary.artifactSha256[key]}  ${fileName}`);
+    }
+    expect(checksums).not.toContain("launch-summary.json");
     expect(hnReadiness).toContain("$CandidateRoots");
     expect(hnReadiness).toContain("$RepoRoot");
     expect(hnReadiness).toContain("Push-Location $RepoRoot");
     expect(hnReadiness).toContain("could_not_find_groundlock_repo_root");
     expect(hnReadiness).toContain("scripts\\hn_readiness.py");
     expect(hnReadiness).toContain("--evidence-out");
-    expect(`${zone}\n${webEnv}\n${statusRecords}\n${JSON.stringify(summary)}\n${hnReadiness}`).not.toContain("privateKeyJwk");
+    expect(`${zone}\n${webEnv}\n${statusRecords}\n${JSON.stringify(summary)}\n${hnReadiness}\n${checksums}`).not.toContain("privateKeyJwk");
   });
 
   it("refuses to create a Hacker News launch kit for a BLOCK receipt", async () => {
