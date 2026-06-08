@@ -39,6 +39,7 @@ RESERVED_SUFFIXES = (
 OG_IMAGE_PATH = "/groundlock-receipt-desk.png"
 SITE_TITLE = "GroundLock Receipts"
 DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+MAX_WEB_VERIFY_BYTES = 256 * 1024
 
 
 @dataclass(frozen=True)
@@ -161,6 +162,10 @@ def homepage_url(url: str) -> str:
         return urlunparse(parsed)
     clean = url.strip().rstrip("/")
     return f"{clean}/"
+
+
+def verify_endpoint(url: str) -> str:
+    return f"{homepage_url(url).rstrip('/')}/api/verify"
 
 
 def uses_same_origin_status(
@@ -332,6 +337,64 @@ def check_homepage_metadata(url: str, timeout: float = 10.0) -> CheckResult:
         return CheckResult("metadata", False, f"{endpoint} failed: {exc}")
 
     return validate_homepage_metadata(body, endpoint)
+
+
+def build_web_verify_body(file_or_hash: str) -> dict[str, str]:
+    if file_or_hash.startswith("sha256:"):
+        return {"hash": file_or_hash}
+    path = Path(file_or_hash)
+    data = path.read_bytes()
+    if len(data) > MAX_WEB_VERIFY_BYTES:
+        raise ValueError("web_verify_input_too_large")
+    return {"fileText": data.decode("utf-8")}
+
+
+def validate_web_verify_body(body: str) -> CheckResult:
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError as exc:
+        return CheckResult("web-verify", False, f"invalid JSON: {exc}")
+
+    if not isinstance(data, dict):
+        return CheckResult("web-verify", False, "verify response is not a JSON object")
+    state = data.get("state")
+    code = data.get("code")
+    if state != "PASS" or code != "verified":
+        return CheckResult(
+            "web-verify",
+            False,
+            f"deployed /api/verify returned state={state} code={code}",
+        )
+    return CheckResult("web-verify", True, "deployed /api/verify returned PASS")
+
+
+def check_web_verify(url: str, file_or_hash: str, timeout: float = 10.0) -> CheckResult:
+    endpoint = verify_endpoint(url)
+    try:
+        payload = json.dumps(build_web_verify_body(file_or_hash)).encode("utf-8")
+    except Exception as exc:
+        return CheckResult("web-verify", False, f"could not build request body: {exc}")
+
+    request = urllib.request.Request(
+        endpoint,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "groundlock-hn-readiness/1",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read(256_000).decode("utf-8", errors="replace")
+            if response.status != 200:
+                return CheckResult(
+                    "web-verify", False, f"{endpoint} returned HTTP {response.status}"
+                )
+    except Exception as exc:
+        return CheckResult("web-verify", False, f"{endpoint} failed: {exc}")
+
+    return validate_web_verify_body(body)
 
 
 def build_check_live_argv(
@@ -512,6 +575,7 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
         check_live_receipt(
             args.file_or_hash, args.domain, args.status_base_url, args.doh_endpoint
         ),
+        check_web_verify(args.health_url, args.file_or_hash),
     ]
 
 

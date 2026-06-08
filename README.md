@@ -149,7 +149,7 @@ Never commit `.env`, `.env.local`, or real private keys.
 
 See [docs/show-hn-draft.md](docs/show-hn-draft.md). The current draft is marked `LOCAL_DEMO_ONLY` until stable resolver-cache warming, an explicit deployed DoH endpoint, and status endpoints are configured.
 
-After the public deployment is live, run the fail-closed launch audit before removing that marker. It checks CI, public HTTPS launch targets, live verifier health, homepage canonical/share metadata, resolver-cache warming, and live receipt verification:
+After the public deployment is live, run the fail-closed launch audit before removing that marker. It checks CI, public HTTPS launch targets, live verifier health, homepage canonical/share metadata, resolver-cache warming, live receipt verification, and the deployed `/api/verify` endpoint:
 
 ```powershell
 python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\dns-fixture.json --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query

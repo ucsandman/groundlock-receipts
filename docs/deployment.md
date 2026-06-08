@@ -70,7 +70,7 @@ In demo mode it returns `200`. In live mode it returns `503` when `GROUNDLOCK_SI
 
 If `GROUNDLOCK_STATUS_BASE_URL` points at the same origin as `NEXT_PUBLIC_SITE_URL`, health also requires `GROUNDLOCK_STATUS_RECORDS_JSON` to parse, contain only valid status records, and include at least one usable key record and one usable claim record; that means the deployment is using the bundled `/groundlock/status/key` and `/groundlock/status/claim` routes. Externally managed status endpoints are allowed without bundled status JSON, but `groundlock check-live` must still pass before launch.
 
-This is a deployment configuration check only. It does not prove resolver caches are warmed or that a receipt can verify; use `groundlock check-live` for that release gate. Health, verify, and status JSON responses use `Cache-Control: no-store` so stale verifier state is not cached by default.
+This is a deployment configuration check only. It does not prove resolver caches are warmed or that a receipt can verify; use `groundlock check-live` and the deployed `/api/verify` launch audit for that release gate. Health, verify, and status JSON responses use `Cache-Control: no-store` so stale verifier state is not cached by default.
 
 ## DNS TXT records
 
@@ -180,6 +180,7 @@ The audit exits non-zero if:
 - the deployed homepage title, canonical URL, Open Graph URL, or share image metadata still points at localhost, a placeholder, or a different launch origin
 - `groundlock warm-cache` does not return `PASS` for the public demo fixture
 - `groundlock check-live` does not return `PASS` for the public demo receipt
+- the deployed `POST /api/verify` endpoint does not return `PASS` for the public demo receipt or hash
 
 ## Release checklist
 
@@ -196,4 +197,5 @@ The audit exits non-zero if:
 - DNS TXT identity, manifest, and chunk records are published.
 - `groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` returns PASS through the configured resolver path.
 - `groundlock check-live <file|hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>` returns PASS from the configured resolver path.
+- The deployed `POST /api/verify` endpoint returns PASS for the same public demo file or hash.
 - `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, and `npm audit --json` pass.

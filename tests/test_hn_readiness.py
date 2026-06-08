@@ -194,6 +194,39 @@ class HnReadinessTests(unittest.TestCase):
             "https://receipts.groundlock.dev/",
         )
 
+    def test_verify_endpoint_strips_health_endpoint(self) -> None:
+        self.assertEqual(
+            hn_readiness.verify_endpoint("https://receipts.groundlock.dev/api/health"),
+            "https://receipts.groundlock.dev/api/verify",
+        )
+
+    def test_builds_web_verify_request_from_hash_or_file(self) -> None:
+        self.assertEqual(
+            hn_readiness.build_web_verify_body("sha256:abc123"),
+            {"hash": "sha256:abc123"},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "notice.txt"
+            sample.write_text("Dear Jane Roe, return $2,000.00.", encoding="utf-8")
+
+            self.assertEqual(
+                hn_readiness.build_web_verify_body(str(sample)),
+                {"fileText": "Dear Jane Roe, return $2,000.00."},
+            )
+
+    def test_web_verify_response_requires_pass(self) -> None:
+        ok = hn_readiness.validate_web_verify_body(
+            json.dumps({"state": "PASS", "code": "verified"})
+        )
+        bad = hn_readiness.validate_web_verify_body(
+            json.dumps({"state": "UNVERIFIABLE", "code": "dns_txt_missing"})
+        )
+
+        self.assertTrue(ok.ok)
+        self.assertEqual(ok.name, "web-verify")
+        self.assertFalse(bad.ok)
+        self.assertIn("UNVERIFIABLE", bad.detail)
+
     def test_homepage_metadata_accepts_public_launch_origin(self) -> None:
         html = """
         <html>
@@ -306,6 +339,38 @@ class HnReadinessTests(unittest.TestCase):
             [result.name for result in results], ["mock", "mock", "launch-targets"]
         )
         self.assertFalse(results[-1].ok)
+
+    def test_run_checks_includes_deployed_web_verify_after_preflight(self) -> None:
+        args = SimpleNamespace(
+            health_url="https://receipts.groundlock.dev",
+            status_base_url="https://receipts.groundlock.dev/groundlock/status",
+            doh_endpoint="https://resolver.groundlock.dev/dns-query",
+            domain="receipts.groundlock.dev",
+            show_hn_draft="ignored.md",
+            repo="ucsandman/groundlock-receipts",
+            branch="main",
+            dns_fixture="published/dns-fixture.json",
+            file_or_hash="sha256:abc123",
+        )
+
+        ok = hn_readiness.CheckResult("mock", True, "ok")
+        web_verify = hn_readiness.CheckResult("web-verify", True, "ok")
+        with (
+            mock.patch.object(hn_readiness, "check_git_clean", return_value=ok),
+            mock.patch.object(hn_readiness, "check_show_hn_draft", return_value=ok),
+            mock.patch.object(hn_readiness, "check_ci", return_value=ok),
+            mock.patch.object(hn_readiness, "check_health_url", return_value=ok),
+            mock.patch.object(hn_readiness, "check_homepage_metadata", return_value=ok),
+            mock.patch.object(hn_readiness, "check_warm_cache", return_value=ok),
+            mock.patch.object(hn_readiness, "check_live_receipt", return_value=ok),
+            mock.patch.object(
+                hn_readiness, "check_web_verify", return_value=web_verify
+            ),
+        ):
+            results = hn_readiness.run_checks(args)
+
+        self.assertIn("web-verify", [result.name for result in results])
+        self.assertEqual(results[-1].name, "web-verify")
 
     def test_builds_local_check_live_command_without_shell(self) -> None:
         argv = hn_readiness.build_check_live_argv(
