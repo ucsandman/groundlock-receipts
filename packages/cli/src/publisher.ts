@@ -82,6 +82,7 @@ export interface ExportWebEnvOptions {
   fixturePath: string;
   statusBaseUrl: string;
   dohEndpoint?: string;
+  siteUrl?: string;
 }
 
 export interface WarmDnsCacheOptions {
@@ -234,6 +235,7 @@ export async function exportWebEnv(opts: ExportWebEnvOptions): Promise<string> {
   const records = [fixture.status.key, fixture.status.claim];
   const lines = [
     `GROUNDLOCK_SIGNER_DOMAIN=${fixture.domain}`,
+    ...(opts.siteUrl ? [`NEXT_PUBLIC_SITE_URL=${normalizeUrlOrigin(opts.siteUrl)}`] : []),
     ...(opts.dohEndpoint ? [`GROUNDLOCK_DOH_ENDPOINT=${opts.dohEndpoint}`] : []),
     `GROUNDLOCK_STATUS_BASE_URL=${opts.statusBaseUrl}`,
     `GROUNDLOCK_STATUS_RECORDS_JSON=${JSON.stringify(records)}`,
@@ -320,6 +322,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function safeFileName(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function normalizeUrlOrigin(value: string): string {
+  try {
+    return new URL(value).origin;
+  } catch {
+    throw new Error("invalid_site_url");
+  }
 }
 
 function sameTxtSet(left: string[], right: string[]): boolean {

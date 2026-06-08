@@ -75,6 +75,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         fixturePath: first,
         statusBaseUrl: requireFlag(opts, "status-base-url"),
         dohEndpoint: opts["doh-endpoint"],
+        siteUrl: opts["site-url"],
       }));
       return 0;
     }
@@ -185,7 +186,7 @@ function help(): string {
     "groundlock sign <file> --source <json> --domain <domain> --kid <kid> --key <jwk> [--out <receipt>] [--c2pa-sidecar <json>] [--receipt-ref <url-or-path>] [--asset-format <media-type>]",
     "groundlock verify <file|hash> --fixture <dns-fixture.json> [--domain <domain>]",
     "groundlock check-live <file|hash> --domain <domain> --status-base-url <url> [--doh-endpoint <url>]",
-    "groundlock export-web-env <dns-fixture.json> --status-base-url <url> [--doh-endpoint <url>]",
+    "groundlock export-web-env <dns-fixture.json> --status-base-url <url> [--site-url <url>] [--doh-endpoint <url>]",
     "groundlock warm-cache <dns-fixture.json> [--doh-endpoint <url>]",
     "groundlock setup-domain <domain> --receipt <receipt.json> --public-key <jwk> [--chunk-size <chars>]",
     "groundlock local-publish <file> --source <json> --domain <domain> --kid <kid> --key <jwk> --public-key <jwk> --out <dir>",

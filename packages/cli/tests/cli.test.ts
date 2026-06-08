@@ -113,11 +113,14 @@ describe("CLI entrypoint", () => {
       path.join(outDir, "dns-fixture.json"),
       "--status-base-url",
       "https://publisher.example/groundlock/status",
+      "--site-url",
+      "https://receipts.groundlock.dev/path",
     ]);
 
     expect(code).toBe(0);
     const out = stdout.mock.calls.map((call) => String(call[0])).join("");
     expect(out).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.example");
+    expect(out).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
     expect(out).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
   });
 

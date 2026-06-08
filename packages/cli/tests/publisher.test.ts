@@ -113,9 +113,11 @@ describe("publisher SDK", () => {
       fixturePath: published.fixturePath,
       statusBaseUrl: "https://publisher.example/groundlock/status",
       dohEndpoint: "https://resolver.example/dns-query",
+      siteUrl: "https://receipts.groundlock.dev/share",
     });
 
     expect(env).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.example");
+    expect(env).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
     expect(env).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.example/dns-query");
     expect(env).toContain("GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status");
     expect(env).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
