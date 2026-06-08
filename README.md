@@ -70,6 +70,8 @@ npm run typecheck
 npm run lint
 npm run build
 npm run dev --workspace @groundlock/web -- --hostname 127.0.0.1 --port 3000
+docker build -t groundlock-web .
+docker run --rm -p 3000:3000 groundlock-web
 groundlock export-web-env .\published\dns-fixture.json --status-base-url https://publisher.example/groundlock/status
 groundlock check-live sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status
 ```
@@ -89,6 +91,13 @@ See [docs/architecture.md](docs/architecture.md) for the data flow across core, 
 ## Deployment
 
 See [docs/deployment.md](docs/deployment.md) for production web verifier configuration, DNS TXT record requirements, resolver-cache warming, and status endpoint shapes.
+
+The web verifier can run as a container:
+
+```powershell
+docker build -t groundlock-web .
+docker run --rm -p 3000:3000 groundlock-web
+```
 
 ## Threat model
 

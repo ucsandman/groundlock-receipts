@@ -4,6 +4,8 @@ import path from "node:path";
 const nextConfig: NextConfig = {
   agentRules: false,
   devIndicators: false,
+  output: "standalone",
+  outputFileTracingRoot: path.join(__dirname, "../.."),
   typedRoutes: false,
   async headers() {
     return [

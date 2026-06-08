@@ -1,0 +1,16 @@
+.git
+.github
+.next
+**/.next
+dist
+**/dist
+node_modules
+**/node_modules
+npm-debug.log
+Dockerfile
+.dockerignore
+.env*
+!.env.example
+published
+coverage
+*.local

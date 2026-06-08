@@ -20,6 +20,23 @@ GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status
 `GROUNDLOCK_STATUS_BASE_URL` is required when `GROUNDLOCK_SIGNER_DOMAIN` is set.
 The status base URL should be a publisher-controlled HTTPS origin. It is used only for public key and claim status; it is not a signing service and not a timestamp authority.
 
+## Container deployment
+
+Build and run the public verifier container:
+
+```powershell
+docker build -t groundlock-web .
+docker run --rm -p 3000:3000 groundlock-web
+```
+
+For live verifier mode, pass the generated environment block from `groundlock export-web-env` through your host's secret/env system. For local testing, write those values to an uncommitted `.env` file and run:
+
+```powershell
+docker run --rm --env-file .env -p 3000:3000 groundlock-web
+```
+
+The image runs `apps/web` with Next standalone output, listens on `PORT` or `3000`, runs as the non-root `node` user, and includes a Docker `HEALTHCHECK` against `/api/health`.
+
 ## Health check
 
 Use `GET /api/health` for deployment readiness and uptime monitors. It returns booleans for whether live verifier environment variables are configured, but never returns configured domain, resolver, status URL, status records, or secrets.
@@ -109,6 +126,7 @@ Use HTTP `404` for missing status records. Use `revoked`, `retracted`, or `compr
 - `GROUNDLOCK_SIGNER_DOMAIN` points at the publisher domain.
 - `GROUNDLOCK_STATUS_BASE_URL` serves key and claim status JSON.
 - `GET /api/health` returns `200` on the deployed verifier.
+- Container image builds and its Docker healthcheck passes, if deploying by container.
 - DNS TXT identity, manifest, and chunk records are published.
 - Configured resolvers are warmed and verified before links are shared.
 - `groundlock check-live <file|hash> --domain <domain> --status-base-url <url>` returns PASS from the configured resolver path.
