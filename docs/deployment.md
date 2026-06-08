@@ -191,7 +191,7 @@ The audit exits non-zero if:
 - the deployed homepage title, canonical URL, Open Graph URL, or share image metadata still points at localhost, a placeholder, or a different launch origin
 - `groundlock warm-cache` does not return `PASS` for the public demo fixture
 - `groundlock check-live` does not return `PASS` for the public demo receipt
-- the deployed `POST /api/verify` endpoint does not return `PASS` for the public demo receipt or hash, or its `receiptSummary` does not match the launch domain and demo content hash
+- the deployed `POST /api/verify` endpoint does not return `PASS` for the public demo receipt or hash, or its `receiptSummary` does not match the launch domain, demo content hash, and DNS fixture receipt hash
 
 ## Release checklist
 
@@ -209,5 +209,5 @@ The audit exits non-zero if:
 - Zone-file TXT export from `groundlock setup-domain --format zone --ttl <seconds>` has been installed or translated into equivalent provider TXT records.
 - `groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` returns PASS through the configured resolver path.
 - `groundlock check-live <file|hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>` returns PASS from the configured resolver path.
-- The deployed `POST /api/verify` endpoint returns PASS for the same public demo file or hash, with `receiptSummary.signerDomain` matching the launch domain and `receiptSummary.contentHash` matching the demo hash.
+- The deployed `POST /api/verify` endpoint returns PASS for the same public demo file or hash, with `receiptSummary.signerDomain` matching the launch domain, `receiptSummary.contentHash` matching the demo hash, and `receiptSummary.receiptHash` matching the DNS fixture manifest receipt hash.
 - `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, and `npm audit --json` pass.

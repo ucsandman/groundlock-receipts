@@ -370,7 +370,10 @@ def build_web_verify_body(file_or_hash: str) -> dict[str, str]:
 
 
 def validate_web_verify_body(
-    body: str, expected_domain: str, expected_content_hash: str
+    body: str,
+    expected_domain: str,
+    expected_content_hash: str,
+    expected_receipt_hash: str,
 ) -> CheckResult:
     try:
         data = json.loads(body)
@@ -405,17 +408,23 @@ def validate_web_verify_body(
     receipt_hash = summary.get("receiptHash")
     if not isinstance(receipt_hash, str) or not receipt_hash.startswith("sha256:"):
         failures.append("receiptSummary receiptHash is missing")
+    elif receipt_hash != expected_receipt_hash:
+        failures.append("receiptSummary receiptHash does not match DNS fixture receipt")
     if failures:
         return CheckResult("web-verify", False, "; ".join(failures))
     return CheckResult(
         "web-verify",
         True,
-        "deployed /api/verify returned PASS for launch domain and demo hash",
+        "deployed /api/verify returned PASS for launch domain and DNS fixture receipt",
     )
 
 
 def check_web_verify(
-    url: str, file_or_hash: str, domain: str, timeout: float = 10.0
+    url: str,
+    file_or_hash: str,
+    domain: str,
+    expected_receipt_hash: str,
+    timeout: float = 10.0,
 ) -> CheckResult:
     endpoint = verify_endpoint(url)
     try:
@@ -443,7 +452,9 @@ def check_web_verify(
     except Exception as exc:
         return CheckResult("web-verify", False, f"{endpoint} failed: {exc}")
 
-    return validate_web_verify_body(body, domain, expected_content_hash)
+    return validate_web_verify_body(
+        body, domain, expected_content_hash, expected_receipt_hash
+    )
 
 
 def check_dns_fixture(path: str, domain: str, file_or_hash: str) -> CheckResult:
@@ -516,16 +527,8 @@ def validate_fixture_txt_records(
     txt: dict[object, object], expected_domain: str, content_hash: str
 ) -> tuple[list[str], FixtureManifest | None]:
     failures = []
-    normalized: dict[str, list[str]] = {}
-    for name, values in txt.items():
-        if (
-            not isinstance(name, str)
-            or not isinstance(values, list)
-            or not all(isinstance(value, str) for value in values)
-        ):
-            failures.append("fixture TXT answers must map names to string arrays")
-            break
-        normalized[normalize_domain(name)] = values
+    normalized, normalized_failures = normalize_fixture_txt_records(txt)
+    failures.extend(normalized_failures)
 
     identity_name = f"_truename.{expected_domain}"
     identity_values = normalized.get(identity_name)
@@ -579,6 +582,53 @@ def validate_fixture_txt_records(
             )
 
     return failures, manifest
+
+
+def fixture_manifest_for_input(
+    path: str, domain: str, file_or_hash: str
+) -> FixtureManifest:
+    content_hash = content_hash_for_input(file_or_hash)
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("fixture is not a JSON object")
+    txt = data.get("txt")
+    if not isinstance(txt, dict) or not txt:
+        raise ValueError("fixture txt records are missing")
+    normalized, failures = normalize_fixture_txt_records(txt)
+    if failures:
+        raise ValueError("; ".join(failures))
+
+    expected_domain = normalize_domain(domain)
+    expected_manifest_name = (
+        f"gl-{cache_label(content_hash)}._groundlock.{expected_domain}"
+    )
+    manifest, manifest_error = parse_fixture_manifest(
+        normalized.get(expected_manifest_name, [])
+    )
+    if manifest is None:
+        detail = manifest_error or "missing"
+        raise ValueError(
+            f"fixture cache manifest TXT record for demo hash is {detail}: "
+            f"{expected_manifest_name}"
+        )
+    return manifest
+
+
+def normalize_fixture_txt_records(
+    txt: dict[object, object],
+) -> tuple[dict[str, list[str]], list[str]]:
+    failures = []
+    normalized: dict[str, list[str]] = {}
+    for name, values in txt.items():
+        if (
+            not isinstance(name, str)
+            or not isinstance(values, list)
+            or not all(isinstance(value, str) for value in values)
+        ):
+            failures.append("fixture TXT answers must map names to string arrays")
+            break
+        normalized[normalize_domain(name)] = values
+    return normalized, failures
 
 
 def parse_fixture_manifest(
@@ -1104,6 +1154,20 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
     if any(not result.ok for result in preflight):
         return preflight
 
+    try:
+        fixture_manifest = fixture_manifest_for_input(
+            args.dns_fixture, args.domain, args.file_or_hash
+        )
+    except Exception as exc:
+        return [
+            *preflight,
+            CheckResult(
+                "dns-fixture",
+                False,
+                f"could not read DNS fixture receipt after preflight: {exc}",
+            ),
+        ]
+
     return [
         *preflight,
         check_ci(args.repo, args.branch),
@@ -1113,7 +1177,12 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
         check_live_receipt(
             args.file_or_hash, args.domain, args.status_base_url, args.doh_endpoint
         ),
-        check_web_verify(args.health_url, args.file_or_hash, args.domain),
+        check_web_verify(
+            args.health_url,
+            args.file_or_hash,
+            args.domain,
+            fixture_manifest.receipt_hash,
+        ),
     ]
 
 

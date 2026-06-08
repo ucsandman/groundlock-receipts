@@ -390,11 +390,13 @@ class HnReadinessTests(unittest.TestCase):
             ),
             "receipts.groundlock.dev",
             "sha256:abc",
+            "sha256:receipt",
         )
         bad = hn_readiness.validate_web_verify_body(
             json.dumps({"state": "UNVERIFIABLE", "code": "dns_txt_missing"}),
             "receipts.groundlock.dev",
             "sha256:abc",
+            "sha256:receipt",
         )
 
         self.assertTrue(ok.ok)
@@ -415,6 +417,7 @@ class HnReadinessTests(unittest.TestCase):
             ({**base_summary, "contentHash": "sha256:other"}, "contentHash"),
             ({**base_summary, "verdict": "block"}, "verdict"),
             ({**base_summary, "receiptHash": "receipt"}, "receiptHash"),
+            ({**base_summary, "receiptHash": "sha256:other"}, "receiptHash"),
         ]
         for summary, expected_detail in cases:
             with self.subTest(expected_detail=expected_detail):
@@ -423,7 +426,10 @@ class HnReadinessTests(unittest.TestCase):
                     body["receiptSummary"] = summary
 
                 result = hn_readiness.validate_web_verify_body(
-                    json.dumps(body), "receipts.groundlock.dev", "sha256:abc"
+                    json.dumps(body),
+                    "receipts.groundlock.dev",
+                    "sha256:abc",
+                    "sha256:receipt",
                 )
 
                 self.assertFalse(result.ok)
@@ -457,9 +463,14 @@ class HnReadinessTests(unittest.TestCase):
             result = hn_readiness.check_dns_fixture(
                 str(fixture), "receipts.groundlock.dev", "sha256:abc"
             )
+            manifest = hn_readiness.fixture_manifest_for_input(
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
+            )
 
         self.assertTrue(result.ok)
         self.assertEqual(result.name, "dns-fixture")
+        self.assertEqual(manifest.receipt_hash, parts["receipt_hash"])
+        self.assertEqual(manifest.signer_domain, "receipts.groundlock.dev")
 
     def test_dns_fixture_preflight_rejects_malformed_manifest_record(
         self,
@@ -1283,10 +1294,22 @@ class HnReadinessTests(unittest.TestCase):
 
         ok = hn_readiness.CheckResult("mock", True, "ok")
         web_verify = hn_readiness.CheckResult("web-verify", True, "ok")
+        fixture_manifest = hn_readiness.FixtureManifest(
+            receipt_hash="sha256:receipt",
+            payload_hash="sha256:payload",
+            signer_domain="receipts.groundlock.dev",
+            kid="k1",
+            chunk_count=1,
+        )
         with (
             mock.patch.object(hn_readiness, "check_git_clean", return_value=ok),
             mock.patch.object(hn_readiness, "check_show_hn_draft", return_value=ok),
             mock.patch.object(hn_readiness, "check_dns_fixture", return_value=ok),
+            mock.patch.object(
+                hn_readiness,
+                "fixture_manifest_for_input",
+                return_value=fixture_manifest,
+            ),
             mock.patch.object(hn_readiness, "check_ci", return_value=ok),
             mock.patch.object(hn_readiness, "check_health_url", return_value=ok),
             mock.patch.object(hn_readiness, "check_homepage_metadata", return_value=ok),
@@ -1304,6 +1327,7 @@ class HnReadinessTests(unittest.TestCase):
             "https://receipts.groundlock.dev",
             "sha256:abc123",
             "receipts.groundlock.dev",
+            "sha256:receipt",
         )
 
     def test_builds_local_check_live_command_without_shell(self) -> None:

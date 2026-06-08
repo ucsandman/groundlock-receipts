@@ -62,7 +62,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - public demo fixtures that do not contain secrets or private customer data
 - warm-cache PASS evidence for the public demo fixture
 - check-live PASS evidence for at least one public demo receipt
-- deployed `/api/verify` PASS evidence whose `receiptSummary` matches the same public demo receipt and launch domain
+- deployed `/api/verify` PASS evidence whose `receiptSummary` matches the same public demo receipt, DNS fixture receipt hash, and launch domain
 - green CI run on main
 - `scripts/hn_readiness.py` passing
 
