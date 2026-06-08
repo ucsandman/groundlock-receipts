@@ -46,6 +46,27 @@ describe("live public verifier", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "http://resolver.example/dns-query", "doh_resolver_invalid"],
+    ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "not-url", "status_resolver_invalid"],
+  ])("fails closed when live mode has an invalid %s", async (_label, key, value, code) => {
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.example";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.example/groundlock";
+    process.env[key] = value;
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { verifyPublicContentHash } = await import("../lib/public-verifier");
+    const result = await verifyPublicContentHash(digestText(liveCandidate));
+
+    expect(result).toEqual(expect.objectContaining({
+      state: "UNVERIFIABLE",
+      code,
+    }));
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("reconstructs receipts from configured DoH TXT records and HTTP status records", async () => {
     const signerDomain = "live.example";
     const key = generateSigningKey("live-key-1");

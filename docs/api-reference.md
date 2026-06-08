@@ -29,7 +29,7 @@ Public, account-free verifier for GroundLock-canonicalized text content or `sha2
 
 The verifier reconstructs the signed receipt from DNS resolver-cache TXT manifest/chunk records, then checks receipt hashes, signatures, grounding verdict, and status.
 
-If `GROUNDLOCK_SIGNER_DOMAIN` is configured, `/api/verify` uses live DNS-over-HTTPS lookups and HTTP status endpoints. Missing `GROUNDLOCK_DOH_ENDPOINT` or `GROUNDLOCK_STATUS_BASE_URL` returns `UNVERIFIABLE` instead of falling back to demo fixtures or an implicit resolver. Without `GROUNDLOCK_SIGNER_DOMAIN`, it uses local demo fixtures.
+If `GROUNDLOCK_SIGNER_DOMAIN` is configured, `/api/verify` uses live DNS-over-HTTPS lookups and HTTP status endpoints. Missing, malformed, or non-HTTPS `GROUNDLOCK_DOH_ENDPOINT` or `GROUNDLOCK_STATUS_BASE_URL` returns `UNVERIFIABLE` instead of falling back to demo fixtures, an implicit resolver, or a server error. Without `GROUNDLOCK_SIGNER_DOMAIN`, it uses local demo fixtures.
 
 The web app also exposes optional public status routes at `/groundlock/status/key` and `/groundlock/status/claim` when `GROUNDLOCK_STATUS_RECORDS_JSON` is configured.
 

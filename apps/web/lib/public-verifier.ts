@@ -69,10 +69,26 @@ export async function verifyPublicContentHash(contentHash: string): Promise<True
         explanation: "GROUNDLOCK_DOH_ENDPOINT is required when GROUNDLOCK_SIGNER_DOMAIN is configured",
       };
     }
+    const dohEndpoint = configuredHttpsUrl(liveConfig.dohEndpoint);
+    if (!dohEndpoint) {
+      return {
+        state: "UNVERIFIABLE",
+        code: "doh_resolver_invalid",
+        explanation: "GROUNDLOCK_DOH_ENDPOINT must be a valid HTTPS URL when GROUNDLOCK_SIGNER_DOMAIN is configured",
+      };
+    }
+    const statusBaseUrl = configuredHttpsUrl(liveConfig.statusBaseUrl);
+    if (!statusBaseUrl) {
+      return {
+        state: "UNVERIFIABLE",
+        code: "status_resolver_invalid",
+        explanation: "GROUNDLOCK_STATUS_BASE_URL must be a valid HTTPS URL when GROUNDLOCK_SIGNER_DOMAIN is configured",
+      };
+    }
     const fetcher = fetchJson;
     return verifyTrueName(contentHash, liveConfig.signerDomain, {
-      ...createDohTxtResolver(fetcher, liveConfig.dohEndpoint),
-      statusResolver: createHttpStatusResolver(fetcher, liveConfig.statusBaseUrl),
+      ...createDohTxtResolver(fetcher, dohEndpoint),
+      statusResolver: createHttpStatusResolver(fetcher, statusBaseUrl),
     });
   }
   return verifyTrueName(contentHash, demoFixture.domain, demoFixture.resolver);
@@ -221,6 +237,17 @@ async function fetchStatusRecord(
 function cleanEnv(value: string | undefined): string | null {
   const cleaned = value?.trim();
   return cleaned ? cleaned : null;
+}
+
+function configuredHttpsUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || !url.hostname) return null;
+    return value;
+  } catch {
+    return null;
+  }
 }
 
 function readPositiveIntEnv(name: string, fallback: number): number {
