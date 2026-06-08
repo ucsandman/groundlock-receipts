@@ -35,6 +35,26 @@ async function fixtureDir() {
 }
 
 describe("CLI entrypoint", () => {
+  it("generates publisher key files without printing private key material", async () => {
+    const { dir } = await fixtureDir();
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    const code = await main(["generate-key", "launch-key", "--out", dir]);
+
+    expect(code).toBe(0);
+    const out = stdout.mock.calls.map((call) => String(call[0])).join("");
+    expect(out).toContain("kid launch-key");
+    expect(out).toContain("private-key");
+    expect(out).toContain("public-key");
+    expect(out).not.toContain('"d"');
+
+    const privateJwk = JSON.parse(await readFile(path.join(dir, "launch-key.private.jwk"), "utf8"));
+    const publicJwk = JSON.parse(await readFile(path.join(dir, "launch-key.public.jwk"), "utf8"));
+    expect(privateJwk).toEqual(expect.objectContaining({ kty: "OKP", crv: "Ed25519", d: expect.any(String) }));
+    expect(publicJwk).toEqual(expect.objectContaining({ kty: "OKP", crv: "Ed25519", x: expect.any(String) }));
+    expect(publicJwk).not.toHaveProperty("d");
+  });
+
   it("returns BLOCK exit semantics from the actual local-publish command", async () => {
     const { dir, sourcePath, blockedPath } = await fixtureDir();
     const key = generateSigningKey("k1");

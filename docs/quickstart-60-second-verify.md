@@ -37,13 +37,12 @@ Set-Content -Path $samplePath -Encoding utf8 -Value 'Dear Jane Roe, return $2,00
 ## Generate a demo keypair
 
 ```powershell
-$keyJson = node --input-type=module -e "import { generateSigningKey } from './packages/core/dist/index.js'; process.stdout.write(JSON.stringify(generateSigningKey('quickstart-key')));"
-$key = $keyJson | ConvertFrom-Json
-$privateJwk = $key.privateKeyJwk | ConvertTo-Json -Compress
-$publicJwk = $key.publicKeyJwk | ConvertTo-Json -Compress
+node .\packages\cli\dist\cli.js generate-key quickstart-key --out $dir
+$privateJwk = Join-Path $dir "quickstart-key.private.jwk"
+$publicJwk = Join-Path $dir "quickstart-key.public.jwk"
 ```
 
-Do not commit demo keys. For production, use managed key storage in the publisher workflow; the public web verifier should not hold a receipt-signing private key.
+`generate-key` writes private and public JWK files and prints only their paths. Do not commit demo keys. For production, use managed key storage in the publisher workflow; the public web verifier should not hold a receipt-signing private key.
 
 ## Publish local fixtures
 

@@ -48,6 +48,20 @@ The image runs `apps/web` with Next standalone output, listens on `PORT` or `300
 
 The web app sets browser hardening headers for all routes: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Strict-Transport-Security`, `Cross-Origin-Opener-Policy`, `X-DNS-Prefetch-Control`, `X-Permitted-Cross-Domain-Policies`, and `Permissions-Policy`.
 
+## Publisher key bootstrap
+
+Generate a publisher signing keypair outside the public verifier deployment:
+
+```powershell
+groundlock generate-key launch-key-1 --out .\keys
+```
+
+The command writes `launch-key-1.private.jwk` and `launch-key-1.public.jwk` and prints only file paths. Keep the private JWK in the publisher signing workflow or managed key storage; do not put it in the web verifier, Docker image, DNS, `.env`, or Git. The public JWK is used for DNS identity records:
+
+```powershell
+groundlock local-publish .\notice.txt --source .\source.json --domain publisher.example --kid launch-key-1 --key .\keys\launch-key-1.private.jwk --public-key .\keys\launch-key-1.public.jwk --out .\published
+```
+
 ## Health check
 
 Use `GET /api/health` for deployment readiness and uptime monitors. It returns booleans for whether live verifier environment variables are configured, but never returns configured domain, resolver, status URL, status records, or secrets.

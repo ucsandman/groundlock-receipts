@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import {
   exportWebEnv,
+  generateKeyFiles,
   localPublish,
   setupDomainRecords,
   signFile,
@@ -17,6 +18,17 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   const [command, first, ...rest] = argv;
   const opts = parseFlags(rest);
   try {
+    if (command === "generate-key") {
+      requireValue(first, "kid");
+      const result = await generateKeyFiles({
+        kid: first,
+        outDir: requireFlag(opts, "out"),
+      });
+      process.stdout.write(`kid ${result.kid}\n`);
+      process.stdout.write(`private-key ${result.privateKeyPath}\n`);
+      process.stdout.write(`public-key ${result.publicKeyPath}\n`);
+      return 0;
+    }
     if (command === "sign") {
       requireValue(first, "file");
       const result = await signFile({
@@ -169,6 +181,7 @@ function writeDnsCacheRecords(records: SetupDomainRecords): void {
 
 function help(): string {
   return [
+    "groundlock generate-key <kid> --out <dir>",
     "groundlock sign <file> --source <json> --domain <domain> --kid <kid> --key <jwk> [--out <receipt>] [--c2pa-sidecar <json>] [--receipt-ref <url-or-path>] [--asset-format <media-type>]",
     "groundlock verify <file|hash> --fixture <dns-fixture.json> [--domain <domain>]",
     "groundlock check-live <file|hash> --domain <domain> --status-base-url <url> [--doh-endpoint <url>]",

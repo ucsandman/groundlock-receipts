@@ -8,6 +8,7 @@ import {
   createC2paInteropSidecar,
   createLocalTrueNameResolver,
   digestText,
+  generateSigningKey,
   issueVerifiedReceipt,
   receiptStatusHash,
   verifyTrueName,
@@ -94,10 +95,34 @@ export interface WarmDnsCacheResult {
   failures: Array<{ name: string; code: string; explanation: string }>;
 }
 
+export interface GenerateKeyFilesOptions {
+  kid: string;
+  outDir: string;
+}
+
+export interface GenerateKeyFilesResult {
+  kid: string;
+  privateKeyPath: string;
+  publicKeyPath: string;
+}
+
 interface DnsFixture {
   domain: string;
   txt: Record<string, string[]>;
   status: { key: KeyStatusRecord; claim: ClaimStatusRecord };
+}
+
+export async function generateKeyFiles(opts: GenerateKeyFilesOptions): Promise<GenerateKeyFilesResult> {
+  await mkdir(opts.outDir, { recursive: true });
+  const key = generateSigningKey(opts.kid);
+  const baseName = safeFileName(opts.kid);
+  const privateKeyPath = path.join(opts.outDir, `${baseName}.private.jwk`);
+  const publicKeyPath = path.join(opts.outDir, `${baseName}.public.jwk`);
+
+  await writeFile(privateKeyPath, `${JSON.stringify(key.privateKeyJwk, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await writeFile(publicKeyPath, `${JSON.stringify(key.publicKeyJwk, null, 2)}\n`, "utf8");
+
+  return { kid: opts.kid, privateKeyPath, publicKeyPath };
 }
 
 export async function signFile(opts: SignFileOptions): Promise<SignFileResult> {
