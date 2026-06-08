@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateSigningKey, parseCacheManifestRecord } from "@groundlock/core";
 import {
+  formatDnsZoneRecords,
   localPublish,
   exportWebEnv,
   setupDomainRecords,
@@ -316,6 +317,38 @@ describe("publisher SDK", () => {
     );
     expect(records.chunks.length).toBeGreaterThan(1);
     expect(JSON.stringify(records)).not.toContain("https://");
+  });
+
+  it("formats DNS cache records as pasteable zone-file TXT lines", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const signed = await signFile({
+      filePath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      outPath: path.join(dir, "receipt.json"),
+    });
+    const records = setupDomainRecords({
+      receipt: signed.receipt,
+      publicKeyJwk: key.publicKeyJwk,
+      chunkSize: 80,
+    });
+
+    const zone = formatDnsZoneRecords(records, 600);
+
+    expect(zone).toContain('_truename.publisher.example. 600 IN TXT "');
+    expect(zone).toContain("._groundlock.publisher.example. 600 IN TXT ");
+    expect(zone).toContain("c0.");
+    expect(zone).not.toContain("privateKeyJwk");
+    for (const line of zone.trim().split("\n")) {
+      expect(line).toMatch(/\. 600 IN TXT ".*"$/);
+      for (const segment of line.match(/"([^"]*)"/g) ?? []) {
+        expect(segment.length).toBeLessThanOrEqual(257);
+      }
+    }
+    expect(() => formatDnsZoneRecords(records, 0)).toThrow("invalid_ttl");
   });
 
   it("writes a C2PA interop sidecar next to a signed receipt when requested", async () => {

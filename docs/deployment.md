@@ -80,7 +80,13 @@ The publisher must serve and warm the records printed by the CLI:
 groundlock setup-domain publisher.example --receipt .\receipt.json --public-key .\public.jwk
 ```
 
-`setup-domain` prints DNS records only. It exits before any DNS mutation, so the publisher still needs to install those TXT records with its DNS provider or authoritative responder.
+`setup-domain` prints DNS records only. It exits before any DNS mutation, so the publisher still needs to install those TXT records with its DNS provider or authoritative responder. For providers that accept zone-file style records, export pasteable FQDN TXT lines with an explicit TTL:
+
+```powershell
+groundlock setup-domain publisher.example --receipt .\receipt.json --public-key .\public.jwk --format zone --ttl 300
+```
+
+The zone-file output splits long TXT values into quoted 255-character strings on the same record line.
 
 Required TXT records:
 
@@ -195,6 +201,7 @@ The audit exits non-zero if:
 - `GET /api/health` returns `200` on the deployed verifier and reports `signerDomainConfigured`, `siteUrlConfigured`, `dohEndpointConfigured`, and `statusBaseUrlConfigured`; same-origin status deployments also report `statusRecordsConfigured`.
 - Container image builds and its Docker healthcheck passes, if deploying by container.
 - DNS TXT identity, manifest, and chunk records are published.
+- Zone-file TXT export from `groundlock setup-domain --format zone --ttl <seconds>` has been installed or translated into equivalent provider TXT records.
 - `groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` returns PASS through the configured resolver path.
 - `groundlock check-live <file|hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>` returns PASS from the configured resolver path.
 - The deployed `POST /api/verify` endpoint returns PASS for the same public demo file or hash.

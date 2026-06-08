@@ -164,6 +164,12 @@ export function setupDomainRecords(opts: SetupDomainOptions): SetupDomainRecords
   return { mutatesDns: false, ...createDnsCacheRecords(opts.receipt, opts.publicKeyJwk, { chunkSize: opts.chunkSize }) };
 }
 
+export function formatDnsZoneRecords(records: DnsCacheRecords, ttl = 300): string {
+  if (!Number.isInteger(ttl) || ttl < 1) throw new Error("invalid_ttl");
+  const zoneRecords = [records.identity, records.manifest, ...records.chunks];
+  return `${zoneRecords.map((record) => formatZoneTxtRecord(record.name, record.value, ttl)).join("\n")}\n`;
+}
+
 export async function localPublish(opts: LocalPublishOptions): Promise<LocalPublishResult> {
   await mkdir(opts.outDir, { recursive: true });
   const receiptFileName = safeFileName(digestText(await readTextCapped(opts.filePath))) + ".json";
@@ -320,6 +326,30 @@ function dnsTxtFromRecords(records: DnsCacheRecords): Record<string, string[]> {
     txt[chunk.name] = [chunk.value];
   }
   return txt;
+}
+
+function formatZoneTxtRecord(name: string, value: string, ttl: number): string {
+  return `${fqdn(name)} ${ttl} IN TXT ${formatTxtRdata(value)}`;
+}
+
+function fqdn(name: string): string {
+  return name.endsWith(".") ? name : `${name}.`;
+}
+
+function formatTxtRdata(value: string): string {
+  return txtSegments(value).map(quoteTxtSegment).join(" ");
+}
+
+function txtSegments(value: string): string[] {
+  const segments: string[] = [];
+  for (let offset = 0; offset < value.length; offset += 255) {
+    segments.push(value.slice(offset, offset + 255));
+  }
+  return segments.length > 0 ? segments : [""];
+}
+
+function quoteTxtSegment(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

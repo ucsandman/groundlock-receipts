@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import {
   exportWebEnv,
+  formatDnsZoneRecords,
   generateKeyFiles,
   localPublish,
   setupDomainRecords,
@@ -102,7 +103,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         publicKeyJwk: await readJsonArg<JsonWebKey>(requireFlag(opts, "public-key")),
         chunkSize: optionalInt(opts["chunk-size"]),
       });
-      writeDnsCacheRecords(records);
+      const format = opts.format ?? "text";
+      if (format === "zone") {
+        process.stdout.write(formatDnsZoneRecords(records, optionalPositiveInt(opts.ttl) ?? 300));
+      } else if (format === "text") {
+        writeDnsCacheRecords(records);
+      } else {
+        throw new Error("invalid_format");
+      }
       process.stdout.write("DNS mutation: none\n");
       return 0;
     }
@@ -172,6 +180,12 @@ function optionalInt(value: string | undefined): number | undefined {
   return parsed;
 }
 
+function optionalPositiveInt(value: string | undefined): number | undefined {
+  const parsed = optionalInt(value);
+  if (parsed !== undefined && parsed < 1) throw new Error("invalid_integer");
+  return parsed;
+}
+
 function writeDnsCacheRecords(records: SetupDomainRecords): void {
   process.stdout.write(`${records.identity.name} TXT ${records.identity.value}\n`);
   process.stdout.write(`cache-manifest ${records.manifest.name} TXT ${records.manifest.value}\n`);
@@ -188,7 +202,7 @@ function help(): string {
     "groundlock check-live <file|hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>",
     "groundlock export-web-env <dns-fixture.json> --status-base-url <url> --doh-endpoint <url> [--site-url <url>]",
     "groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>",
-    "groundlock setup-domain <domain> --receipt <receipt.json> --public-key <jwk> [--chunk-size <chars>]",
+    "groundlock setup-domain <domain> --receipt <receipt.json> --public-key <jwk> [--chunk-size <chars>] [--format text|zone] [--ttl <seconds>]",
     "groundlock local-publish <file> --source <json> --domain <domain> --kid <kid> --key <jwk> --public-key <jwk> --out <dir>",
   ].join("\n") + "\n";
 }

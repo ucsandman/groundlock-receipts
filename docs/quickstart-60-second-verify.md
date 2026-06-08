@@ -82,11 +82,12 @@ After publishing real TXT records and status endpoints, verify the public path w
 groundlock export-web-env (Join-Path $publishDir "dns-fixture.json") --status-base-url https://publisher.example/groundlock/status --site-url https://receipts.example.com --doh-endpoint https://cloudflare-dns.com/dns-query
 $receiptPath = Get-ChildItem -Path (Join-Path $publishDir "receipts") -Filter "*.json" | Select-Object -First 1 -ExpandProperty FullName
 groundlock setup-domain publisher.example --receipt $receiptPath --public-key $publicJwk
+groundlock setup-domain publisher.example --receipt $receiptPath --public-key $publicJwk --format zone --ttl 300
 groundlock warm-cache (Join-Path $publishDir "dns-fixture.json") --doh-endpoint https://cloudflare-dns.com/dns-query
 groundlock check-live $samplePath --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
 ```
 
-`export-web-env` prints the web deployment variables, including `NEXT_PUBLIC_SITE_URL` and `GROUNDLOCK_STATUS_RECORDS_JSON`. `setup-domain` prints the required TXT records and does not mutate DNS. `warm-cache` queries every expected DNS TXT fixture name through the configured DoH resolver and fails if the answer set differs. `check-live` uses DNS-over-HTTPS TXT lookups plus public key/claim status endpoints. It returns PASS only when the deployed resolver and status path can reconstruct and verify the receipt.
+`export-web-env` prints the web deployment variables, including `NEXT_PUBLIC_SITE_URL` and `GROUNDLOCK_STATUS_RECORDS_JSON`. `setup-domain` prints the required TXT records and does not mutate DNS; `--format zone --ttl 300` prints pasteable fully-qualified zone-file TXT lines and splits long TXT values into DNS-sized quoted strings. `warm-cache` queries every expected DNS TXT fixture name through the configured DoH resolver and fails if the answer set differs. `check-live` uses DNS-over-HTTPS TXT lookups plus public key/claim status endpoints. It returns PASS only when the deployed resolver and status path can reconstruct and verify the receipt.
 
 ## Emit a C2PA interop sidecar
 
