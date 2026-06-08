@@ -544,6 +544,10 @@ def validate_fixture_txt_records(
             failures.append(
                 "fixture DNS cache payload hash does not match cache manifest"
             )
+        elif payload is not None:
+            failures.extend(
+                validate_cached_receipt_payload(payload, content_hash, manifest)
+            )
 
     return failures, manifest
 
@@ -635,7 +639,38 @@ def parse_base64url_json_object(value: str) -> dict[str, object] | None:
 
 
 def canonical_json(value: object) -> str:
-    return json.dumps(value, separators=(",", ":"), sort_keys=True)
+    return serialize_json(value)
+
+
+def serialize_json(value: object) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, str):
+        return json.dumps(unicodedata.normalize("NFC", value), ensure_ascii=False)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        if (
+            not isinstance(value, bool)
+            and value == value
+            and value not in {float("inf"), float("-inf")}
+        ):
+            return json.dumps(value, separators=(",", ":"))
+        return "null"
+    if isinstance(value, list):
+        return "[" + ",".join(serialize_json(item) for item in value) + "]"
+    if isinstance(value, dict):
+        items = []
+        for key in sorted(value):
+            if not isinstance(key, str):
+                continue
+            items.append(
+                json.dumps(unicodedata.normalize("NFC", key), ensure_ascii=False)
+                + ":"
+                + serialize_json(value[key])
+            )
+        return "{" + ",".join(items) + "}"
+    return "null"
 
 
 def validate_manifest_chunks(
@@ -696,6 +731,51 @@ def parse_fixture_chunk_data(value: str, expected_index: int) -> str | None:
     if index != expected_index or not CHUNK_DATA_RE.match(data):
         return None
     return data
+
+
+def validate_cached_receipt_payload(
+    payload: str, content_hash: str, manifest: FixtureManifest
+) -> list[str]:
+    receipt = parse_base64url_json_object(payload)
+    if receipt is None:
+        return ["fixture DNS cache payload is malformed receipt JSON"]
+    signer_domain = receipt.get("signerDomain")
+    signer_key_id = receipt.get("signerKeyId")
+    content_hashes = receipt.get("contentHashes")
+    if (
+        not isinstance(signer_domain, str)
+        or not isinstance(signer_key_id, str)
+        or not isinstance(content_hashes, list)
+    ):
+        return ["fixture cached receipt is malformed"]
+
+    failures = []
+    if (
+        normalize_domain(signer_domain) != manifest.signer_domain
+        or signer_key_id != manifest.kid
+    ):
+        failures.append("fixture cached receipt signer does not match cache manifest")
+    if not has_candidate_content_hash(content_hashes, content_hash):
+        failures.append("fixture cached receipt does not describe demo hash")
+    if receipt_status_hash(receipt) != manifest.receipt_hash:
+        failures.append(
+            "fixture cached receipt body hash does not match cache manifest"
+        )
+    return failures
+
+
+def has_candidate_content_hash(values: list[object], content_hash: str) -> bool:
+    for value in values:
+        if not isinstance(value, dict):
+            continue
+        if value.get("role") == "candidate" and value.get("value") == content_hash:
+            return True
+    return False
+
+
+def receipt_status_hash(receipt: dict[str, object]) -> str:
+    body = {key: value for key, value in receipt.items() if key != "signature"}
+    return digest_utf8(canonical_json(body))
 
 
 def parse_kv_record(value: str, prefix: str) -> dict[str, str]:

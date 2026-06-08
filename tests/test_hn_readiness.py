@@ -50,6 +50,57 @@ def active_status_records(
     }
 
 
+def base64url_json(value: object) -> str:
+    return (
+        base64.urlsafe_b64encode(hn_readiness.canonical_json(value).encode("utf-8"))
+        .decode("ascii")
+        .rstrip("=")
+    )
+
+
+def cached_receipt_parts(
+    content_hash: str = "sha256:abc",
+    signer_domain: str = "receipts.groundlock.dev",
+    kid: str = "k1",
+) -> dict[str, object]:
+    source_hash = "sha256:source"
+    receipt = {
+        "version": "groundlock-receipt/v1",
+        "issuedAt": ISSUED_AT,
+        "engineVersion": "test",
+        "verdict": "pass",
+        "violations": [],
+        "candidateHash": content_hash,
+        "sourceOfTruthHash": source_hash,
+        "sourceHash": source_hash,
+        "contentHashes": [
+            {
+                "role": "candidate",
+                "alg": "sha256",
+                "value": content_hash,
+                "canonicalization": "groundlock:text:nfc-v1",
+            },
+            {
+                "role": "source",
+                "alg": "sha256",
+                "value": source_hash,
+                "canonicalization": "groundlock:source:test",
+            },
+        ],
+        "signerKeyId": kid,
+        "signerDomain": signer_domain,
+        "contentClass": "notice",
+        "groundedClaims": [],
+        "signature": {"alg": "EdDSA", "kid": kid, "sig": "test-signature"},
+    }
+    payload = base64url_json(receipt)
+    return {
+        "receipt": receipt,
+        "payload": payload,
+        "receipt_hash": hn_readiness.receipt_status_hash(receipt),
+    }
+
+
 def manifest_record(
     receipt_hash: str = "abc",
     payload: str = "abc",
@@ -62,6 +113,37 @@ def manifest_record(
         f"gdm1 rh={receipt_hash} ph={payload_hash} n={chunk_count} "
         f"key={signer_domain}#{kid}"
     )
+
+
+def manifest_record_for_parts(
+    parts: dict[str, object],
+    chunk_count: int = 1,
+    signer_domain: str = "receipts.groundlock.dev",
+    kid: str = "k1",
+) -> str:
+    return manifest_record(
+        receipt_hash=str(parts["receipt_hash"]).removeprefix("sha256:"),
+        payload=str(parts["payload"]),
+        chunk_count=chunk_count,
+        signer_domain=signer_domain,
+        kid=kid,
+    )
+
+
+def active_status_for_parts(
+    parts: dict[str, object],
+    signer_domain: str = "receipts.groundlock.dev",
+    kid: str = "k1",
+) -> dict[str, object]:
+    return active_status_records(
+        signer_domain=signer_domain,
+        kid=kid,
+        receipt_hash=str(parts["receipt_hash"]),
+    )
+
+
+def chunk_record(parts: dict[str, object], index: int = 0) -> str:
+    return f"gdc1 i={index} d={parts['payload']}"
 
 
 class HnReadinessTests(unittest.TestCase):
@@ -310,6 +392,7 @@ class HnReadinessTests(unittest.TestCase):
 
     def test_dns_fixture_preflight_accepts_launch_domain_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            parts = cached_receipt_parts()
             fixture = Path(tmp) / "dns-fixture.json"
             fixture.write_text(
                 json.dumps(
@@ -320,31 +403,13 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1")
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                manifest_record()
+                                manifest_record_for_parts(parts)
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdc1 i=0 d=abc"
+                                chunk_record(parts)
                             ],
                         },
-                        "status": {
-                            "key": {
-                                "version": "groundlock-status/v1",
-                                "kind": "key",
-                                "subject": {
-                                    "signerDomain": "receipts.groundlock.dev",
-                                    "kid": "k1",
-                                },
-                                "status": "active",
-                                "issuedAt": ISSUED_AT,
-                            },
-                            "claim": {
-                                "version": "groundlock-status/v1",
-                                "kind": "claim",
-                                "subject": {"receiptHash": "sha256:abc"},
-                                "status": "active",
-                                "issuedAt": ISSUED_AT,
-                            },
-                        },
+                        "status": active_status_for_parts(parts),
                     }
                 ),
                 encoding="utf-8",
@@ -497,7 +562,7 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("payload hash", result.detail)
 
-    def test_dns_fixture_preflight_rejects_malformed_status_record_shape(
+    def test_dns_fixture_preflight_rejects_malformed_cached_receipt_payload(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -511,10 +576,110 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1")
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                manifest_record()
+                                manifest_record(payload="abc")
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdc1 i=0 d=abc"
+                            ],
+                        },
+                        "status": active_status_records(),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("receipt JSON", result.detail)
+
+    def test_dns_fixture_preflight_rejects_cached_receipt_mismatches(
+        self,
+    ) -> None:
+        cases = [
+            (
+                cached_receipt_parts(signer_domain="other.groundlock.dev"),
+                "fixture cached receipt signer",
+                {},
+            ),
+            (
+                cached_receipt_parts(content_hash="sha256:other"),
+                "demo hash",
+                {},
+            ),
+            (
+                cached_receipt_parts(),
+                "body hash",
+                {"receipt_hash": "other-receipt"},
+            ),
+        ]
+        for parts, expected_detail, manifest_overrides in cases:
+            with self.subTest(expected_detail=expected_detail):
+                receipt_hash = str(
+                    manifest_overrides.get("receipt_hash", parts["receipt_hash"])
+                )
+                with tempfile.TemporaryDirectory() as tmp:
+                    fixture = Path(tmp) / "dns-fixture.json"
+                    fixture.write_text(
+                        json.dumps(
+                            {
+                                "domain": "receipts.groundlock.dev",
+                                "txt": {
+                                    "_truename.receipts.groundlock.dev": [
+                                        identity_record("k1")
+                                    ],
+                                    "gl-abc._groundlock.receipts.groundlock.dev": [
+                                        manifest_record(
+                                            receipt_hash=receipt_hash.removeprefix(
+                                                "sha256:"
+                                            ),
+                                            payload=str(parts["payload"]),
+                                        )
+                                    ],
+                                    "c0.gl-abc._groundlock.receipts.groundlock.dev": [
+                                        chunk_record(parts)
+                                    ],
+                                },
+                                "status": active_status_records(
+                                    receipt_hash=(
+                                        receipt_hash
+                                        if receipt_hash.startswith("sha256:")
+                                        else f"sha256:{receipt_hash}"
+                                    )
+                                ),
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+
+                    result = hn_readiness.check_dns_fixture(
+                        str(fixture), "receipts.groundlock.dev", "sha256:abc"
+                    )
+
+                self.assertFalse(result.ok)
+                self.assertIn(expected_detail, result.detail)
+
+    def test_dns_fixture_preflight_rejects_malformed_status_record_shape(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            parts = cached_receipt_parts()
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "receipts.groundlock.dev",
+                        "txt": {
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1")
+                            ],
+                            "gl-abc._groundlock.receipts.groundlock.dev": [
+                                manifest_record_for_parts(parts)
+                            ],
+                            "c0.gl-abc._groundlock.receipts.groundlock.dev": [
+                                chunk_record(parts)
                             ],
                         },
                         "status": {
@@ -530,7 +695,7 @@ class HnReadinessTests(unittest.TestCase):
                             "claim": {
                                 "version": "groundlock-status/v1",
                                 "kind": "claim",
-                                "subject": {"receiptHash": "sha256:abc"},
+                                "subject": {"receiptHash": str(parts["receipt_hash"])},
                                 "status": "active",
                             },
                         },
@@ -551,6 +716,7 @@ class HnReadinessTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            parts = cached_receipt_parts()
             fixture = Path(tmp) / "dns-fixture.json"
             fixture.write_text(
                 json.dumps(
@@ -559,31 +725,13 @@ class HnReadinessTests(unittest.TestCase):
                         "txt": {
                             "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                manifest_record()
+                                manifest_record_for_parts(parts)
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdc1 i=0 d=abc"
+                                chunk_record(parts)
                             ],
                         },
-                        "status": {
-                            "key": {
-                                "version": "groundlock-status/v1",
-                                "kind": "key",
-                                "subject": {
-                                    "signerDomain": "receipts.groundlock.dev",
-                                    "kid": "k1",
-                                },
-                                "status": "active",
-                                "issuedAt": ISSUED_AT,
-                            },
-                            "claim": {
-                                "version": "groundlock-status/v1",
-                                "kind": "claim",
-                                "subject": {"receiptHash": "sha256:abc"},
-                                "status": "active",
-                                "issuedAt": ISSUED_AT,
-                            },
-                        },
+                        "status": active_status_for_parts(parts),
                     }
                 ),
                 encoding="utf-8",
@@ -601,6 +749,7 @@ class HnReadinessTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            parts = cached_receipt_parts()
             fixture = Path(tmp) / "dns-fixture.json"
             fixture.write_text(
                 json.dumps(
@@ -612,31 +761,13 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1", "def"),
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                manifest_record()
+                                manifest_record_for_parts(parts)
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdc1 i=0 d=abc"
+                                chunk_record(parts)
                             ],
                         },
-                        "status": {
-                            "key": {
-                                "version": "groundlock-status/v1",
-                                "kind": "key",
-                                "subject": {
-                                    "signerDomain": "receipts.groundlock.dev",
-                                    "kid": "k1",
-                                },
-                                "status": "active",
-                                "issuedAt": ISSUED_AT,
-                            },
-                            "claim": {
-                                "version": "groundlock-status/v1",
-                                "kind": "claim",
-                                "subject": {"receiptHash": "sha256:abc"},
-                                "status": "active",
-                                "issuedAt": ISSUED_AT,
-                            },
-                        },
+                        "status": active_status_for_parts(parts),
                     }
                 ),
                 encoding="utf-8",
@@ -654,6 +785,7 @@ class HnReadinessTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            parts = cached_receipt_parts()
             fixture = Path(tmp) / "dns-fixture.json"
             fixture.write_text(
                 json.dumps(
@@ -664,31 +796,13 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("other-key")
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                manifest_record()
+                                manifest_record_for_parts(parts)
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdc1 i=0 d=abc"
+                                chunk_record(parts)
                             ],
                         },
-                        "status": {
-                            "key": {
-                                "version": "groundlock-status/v1",
-                                "kind": "key",
-                                "subject": {
-                                    "signerDomain": "receipts.groundlock.dev",
-                                    "kid": "k1",
-                                },
-                                "status": "active",
-                                "issuedAt": ISSUED_AT,
-                            },
-                            "claim": {
-                                "version": "groundlock-status/v1",
-                                "kind": "claim",
-                                "subject": {"receiptHash": "sha256:abc"},
-                                "status": "active",
-                                "issuedAt": ISSUED_AT,
-                            },
-                        },
+                        "status": active_status_for_parts(parts),
                     }
                 ),
                 encoding="utf-8",
@@ -706,6 +820,7 @@ class HnReadinessTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            parts = cached_receipt_parts(signer_domain="other.groundlock.dev")
             fixture = Path(tmp) / "dns-fixture.json"
             fixture.write_text(
                 json.dumps(
@@ -716,31 +831,17 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1")
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                manifest_record(signer_domain="other.groundlock.dev")
+                                manifest_record_for_parts(
+                                    parts, signer_domain="other.groundlock.dev"
+                                )
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdc1 i=0 d=abc"
+                                chunk_record(parts)
                             ],
                         },
-                        "status": {
-                            "key": {
-                                "version": "groundlock-status/v1",
-                                "kind": "key",
-                                "subject": {
-                                    "signerDomain": "other.groundlock.dev",
-                                    "kid": "k1",
-                                },
-                                "status": "active",
-                                "issuedAt": ISSUED_AT,
-                            },
-                            "claim": {
-                                "version": "groundlock-status/v1",
-                                "kind": "claim",
-                                "subject": {"receiptHash": "sha256:abc"},
-                                "status": "active",
-                                "issuedAt": ISSUED_AT,
-                            },
-                        },
+                        "status": active_status_for_parts(
+                            parts, signer_domain="other.groundlock.dev"
+                        ),
                     }
                 ),
                 encoding="utf-8",
@@ -844,6 +945,7 @@ class HnReadinessTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            parts = cached_receipt_parts()
             fixture = Path(tmp) / "dns-fixture.json"
             fixture.write_text(
                 json.dumps(
@@ -854,10 +956,10 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1")
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                manifest_record(receipt_hash="receipt-abc")
+                                manifest_record_for_parts(parts)
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdc1 i=0 d=abc"
+                                chunk_record(parts)
                             ],
                         },
                         "status": {
@@ -946,6 +1048,7 @@ class HnReadinessTests(unittest.TestCase):
     ) -> None:
         content_hash = hn_readiness.digest_text("Pay Jane Roe $2,000.00.")
         manifest_label = hn_readiness.cache_label(content_hash)
+        parts = cached_receipt_parts(content_hash=content_hash)
         with tempfile.TemporaryDirectory() as tmp:
             sample = Path(tmp) / "notice.txt"
             sample.write_text("Pay Jane Roe $2,000.00.", encoding="utf-8")
@@ -959,31 +1062,13 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1")
                             ],
                             f"gl-{manifest_label}._groundlock.receipts.groundlock.dev": [
-                                manifest_record()
+                                manifest_record_for_parts(parts)
                             ],
                             f"c0.gl-{manifest_label}._groundlock.receipts.groundlock.dev": [
-                                "gdc1 i=0 d=abc"
+                                chunk_record(parts)
                             ],
                         },
-                        "status": {
-                            "key": {
-                                "version": "groundlock-status/v1",
-                                "kind": "key",
-                                "subject": {
-                                    "signerDomain": "receipts.groundlock.dev",
-                                    "kid": "k1",
-                                },
-                                "status": "active",
-                                "issuedAt": ISSUED_AT,
-                            },
-                            "claim": {
-                                "version": "groundlock-status/v1",
-                                "kind": "claim",
-                                "subject": {"receiptHash": "sha256:abc"},
-                                "status": "active",
-                                "issuedAt": ISSUED_AT,
-                            },
-                        },
+                        "status": active_status_for_parts(parts),
                     }
                 ),
                 encoding="utf-8",
