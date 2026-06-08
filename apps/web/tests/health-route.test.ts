@@ -85,6 +85,32 @@ describe("health route", () => {
     expect(JSON.stringify(body)).not.toContain("publisher.example");
   });
 
+  it.each([
+    ["site URL", "NEXT_PUBLIC_SITE_URL", "not-url", "invalid_site_url"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "http://resolver.example/dns-query", "invalid_doh_endpoint"],
+    ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "not-url", "invalid_status_base_url"],
+  ])("fails live mode health when %s config is invalid", async (_label, key, value, code) => {
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.example/groundlock/status";
+    process.env[key] = value;
+
+    const route = await import("../app/api/health/route");
+    const response = await route.GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(body).toEqual(expect.objectContaining({
+      service: "groundlock-web",
+      ok: false,
+      mode: "live",
+      code,
+    }));
+    expect(JSON.stringify(body)).not.toContain(value);
+  });
+
   it("fails live mode health when bundled same-origin status records are missing", async () => {
     process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev/app";

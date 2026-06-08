@@ -20,12 +20,12 @@ GROUNDLOCK_RATE_LIMIT_MAX=240
 GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000
 ```
 
-Demo mode does not use live DoH. When `GROUNDLOCK_SIGNER_DOMAIN` is set, `GROUNDLOCK_DOH_ENDPOINT` is required so the verifier does not silently fall back to an unintended resolver. The Hacker News readiness audit requires the deployed verifier to report `dohEndpointConfigured` and requires `warm-cache`, `check-live`, and `hn_readiness.py` to use the same DoH endpoint URL. The DoH response must include the DNSSEC AD signal; otherwise the verifier fails closed with `dnssec_not_validated`.
+Demo mode does not use live DoH. When `GROUNDLOCK_SIGNER_DOMAIN` is set, `GROUNDLOCK_DOH_ENDPOINT` is required and must be a valid HTTPS URL so the verifier does not silently fall back to an unintended resolver. The Hacker News readiness audit requires the deployed verifier to report `dohEndpointConfigured` and requires `warm-cache`, `check-live`, and `hn_readiness.py` to use the same DoH endpoint URL. The DoH response must include the DNSSEC AD signal; otherwise the verifier fails closed with `dnssec_not_validated`.
 
-`NEXT_PUBLIC_SITE_URL` should be the public HTTPS origin for the deployed verifier. It is used for canonical metadata, Open Graph images, `robots.txt`, and `sitemap.xml`. Set it before building static metadata; `robots.txt` and `sitemap.xml` also read it at runtime.
+`NEXT_PUBLIC_SITE_URL` should be the public HTTPS origin for the deployed verifier. It is used for canonical metadata, Open Graph images, `robots.txt`, and `sitemap.xml`. Set it before building static metadata; `robots.txt` and `sitemap.xml` also read it at runtime. If set in live mode, `/api/health` requires it to be a valid HTTPS URL.
 
 `GROUNDLOCK_STATUS_BASE_URL` is required when `GROUNDLOCK_SIGNER_DOMAIN` is set.
-The status base URL should be a publisher-controlled HTTPS origin. It is used only for public key and claim status; it is not a signing service and not a timestamp authority.
+The status base URL must be a valid publisher-controlled HTTPS URL. It is used only for public key and claim status; it is not a signing service and not a timestamp authority.
 
 `GROUNDLOCK_RATE_LIMIT_MAX` and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS` are optional. Defaults are `240` verifier requests per `60000` ms per app instance. The public verifier intentionally does not trust spoofable forwarding headers for client identity, so put stricter per-client throttling at a trusted edge proxy if needed.
 
@@ -66,7 +66,7 @@ groundlock local-publish .\notice.txt --source .\source.json --domain publisher.
 
 Use `GET /api/health` for deployment readiness and uptime monitors. It returns booleans for whether live verifier environment variables are configured, but never returns configured domain, resolver, status URL, status records, or secrets.
 
-In demo mode it returns `200`. In live mode it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is set without the required `GROUNDLOCK_STATUS_BASE_URL` or `GROUNDLOCK_DOH_ENDPOINT`.
+In demo mode it returns `200`. In live mode it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is set without the required `GROUNDLOCK_STATUS_BASE_URL` or `GROUNDLOCK_DOH_ENDPOINT`, or when the configured site, DoH, or status URLs are malformed or not HTTPS.
 
 If `GROUNDLOCK_STATUS_BASE_URL` points at the same origin as `NEXT_PUBLIC_SITE_URL`, health also requires `GROUNDLOCK_STATUS_RECORDS_JSON` to parse, contain only valid status records, and include at least one usable key record and one usable claim record; that means the deployment is using the bundled `/groundlock/status/key` and `/groundlock/status/claim` routes. Externally managed status endpoints are allowed without bundled status JSON, but `groundlock check-live` must still pass before launch.
 

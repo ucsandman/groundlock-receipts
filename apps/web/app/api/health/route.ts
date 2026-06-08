@@ -43,6 +43,18 @@ export function GET() {
     );
   }
 
+  if (mode === "live" && checks.siteUrlConfigured && !isConfiguredHttpsUrl(process.env.NEXT_PUBLIC_SITE_URL)) {
+    return liveConfigError("invalid_site_url", checks);
+  }
+
+  if (mode === "live" && !isConfiguredHttpsUrl(process.env.GROUNDLOCK_DOH_ENDPOINT)) {
+    return liveConfigError("invalid_doh_endpoint", checks);
+  }
+
+  if (mode === "live" && !isConfiguredHttpsUrl(process.env.GROUNDLOCK_STATUS_BASE_URL)) {
+    return liveConfigError("invalid_status_base_url", checks);
+  }
+
   if (mode === "live" && usesBundledStatusEndpoint() && !checks.statusRecordsConfigured) {
     return jsonNoStore(
       {
@@ -106,8 +118,32 @@ function isConfigured(value: string | undefined): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function isConfiguredHttpsUrl(value: string | undefined): boolean {
+  const raw = value?.trim();
+  if (!raw) return false;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && url.hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function hasStatusRecordKind(records: Array<{ kind: string }>, kind: "key" | "claim"): boolean {
   return records.some((record) => record.kind === kind);
+}
+
+function liveConfigError(code: string, checks: HealthChecks) {
+  return jsonNoStore(
+    {
+      service: "groundlock-web",
+      ok: false,
+      mode: "live" as const,
+      code,
+      checks,
+    },
+    { status: 503 },
+  );
 }
 
 function usesBundledStatusEndpoint(): boolean {
