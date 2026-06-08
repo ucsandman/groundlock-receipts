@@ -1,5 +1,27 @@
 # API reference
 
+## `GET /api/health`
+
+Config-only health check for hosts and uptime monitors.
+
+It returns `200` in demo mode. In live verifier mode, it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is configured but `GROUNDLOCK_STATUS_BASE_URL` is missing. It reports booleans only and does not expose configured domain, resolver, status URL, or status record values.
+
+```json
+{
+  "service": "groundlock-web",
+  "ok": true,
+  "mode": "live",
+  "checks": {
+    "signerDomainConfigured": true,
+    "dohEndpointConfigured": true,
+    "statusBaseUrlConfigured": true,
+    "statusRecordsConfigured": true
+  }
+}
+```
+
+This endpoint does not prove DNS cache chunks are warmed or that any receipt can verify. Use `groundlock check-live` for the public receipt path.
+
 ## `POST /api/verify`
 
 Public, account-free verifier for GroundLock-canonicalized text content or `sha256:` hashes.

@@ -80,7 +80,7 @@ See [docs/quickstart-60-second-verify.md](docs/quickstart-60-second-verify.md) f
 
 ## API
 
-See [docs/api-reference.md](docs/api-reference.md) for `/api/verify` request/response shapes, rate limits, payload limits, and PASS/BLOCK/UNVERIFIABLE/REVOKED examples.
+See [docs/api-reference.md](docs/api-reference.md) for `/api/health`, `/api/verify` request/response shapes, rate limits, payload limits, and PASS/BLOCK/UNVERIFIABLE/REVOKED examples.
 
 ## Architecture
 

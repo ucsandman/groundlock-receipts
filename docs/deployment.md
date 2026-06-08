@@ -20,6 +20,14 @@ GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status
 `GROUNDLOCK_STATUS_BASE_URL` is required when `GROUNDLOCK_SIGNER_DOMAIN` is set.
 The status base URL should be a publisher-controlled HTTPS origin. It is used only for public key and claim status; it is not a signing service and not a timestamp authority.
 
+## Health check
+
+Use `GET /api/health` for deployment readiness and uptime monitors. It returns booleans for whether live verifier environment variables are configured, but never returns configured domain, resolver, status URL, status records, or secrets.
+
+In demo mode it returns `200`. In live mode it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is set without the required `GROUNDLOCK_STATUS_BASE_URL`.
+
+This is a deployment configuration check only. It does not prove resolver caches are warmed or that a receipt can verify; use `groundlock check-live` for that release gate.
+
 ## DNS TXT records
 
 The publisher must serve and warm the records printed by the CLI:
@@ -100,6 +108,7 @@ Use HTTP `404` for missing status records. Use `revoked`, `retracted`, or `compr
 - Web env generated with `groundlock export-web-env` and installed in the deployment.
 - `GROUNDLOCK_SIGNER_DOMAIN` points at the publisher domain.
 - `GROUNDLOCK_STATUS_BASE_URL` serves key and claim status JSON.
+- `GET /api/health` returns `200` on the deployed verifier.
 - DNS TXT identity, manifest, and chunk records are published.
 - Configured resolvers are warmed and verified before links are shared.
 - `groundlock check-live <file|hash> --domain <domain> --status-base-url <url>` returns PASS from the configured resolver path.

@@ -49,6 +49,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - stable publisher signing key managed outside the public verifier
 - configured resolver-cache warming path
 - configured GROUNDLOCK_SIGNER_DOMAIN, GROUNDLOCK_STATUS_BASE_URL, and public status record source
+- deployed `/api/health` returning 200
 - _truename.<domain> TXT identity record
 - gl-<hash>._groundlock.<domain> TXT manifest records
 - c<N>.gl-<hash>._groundlock.<domain> TXT receipt chunk records
