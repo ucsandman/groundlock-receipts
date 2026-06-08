@@ -15,4 +15,16 @@ describe("marketing copy", () => {
     expect(combined).toContain("Warm configured resolvers");
     expect(combined).toContain("Public proof should not depend on a vendor dashboard");
   });
+
+  it("explains the verifier boundary for phishing and truth claims", () => {
+    const page = readFileSync(join(root, "app", "page.tsx"), "utf8");
+    const sections = readFileSync(join(root, "components", "MarketingSections.tsx"), "utf8");
+    const combined = `${page}\n${sections}`;
+
+    expect(combined).toContain("What the verifier checks");
+    expect(combined).toContain("same canonicalized message");
+    expect(combined).toContain("the claimed domain controls the signing key");
+    expect(combined).toContain("It does not decide whether the prose is true");
+    expect(combined).toContain("It helps with phishing by exposing unsigned impersonation");
+  });
 });

@@ -47,6 +47,9 @@ export function MarketingNav() {
           <a className="hover:text-[var(--ink)]" href="/#mechanism">
             Mechanism
           </a>
+          <a className="hover:text-[var(--ink)]" href="/#checks">
+            Checks
+          </a>
           <a className="hover:text-[var(--ink)]" href="/#verify">
             Verify
           </a>
@@ -155,6 +158,57 @@ export function CacheMechanism() {
               </div>
               <h3 className="text-xl font-bold">{stage.title}</h3>
               <p className="mt-3 text-sm leading-6 text-[var(--muted-ink)]">{stage.body}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function VerificationBoundary() {
+  const checks = [
+    {
+      label: "Content",
+      body: "The pasted file or hash resolves to the same canonicalized message hash named by the receipt.",
+    },
+    {
+      label: "Signer",
+      body: "DNS identity records show the claimed domain controls the signing key used on the receipt.",
+    },
+    {
+      label: "Integrity",
+      body: "The DNS TXT chunks rebuild one receipt whose payload hash, receipt hash, and signature all line up.",
+    },
+    {
+      label: "Status",
+      body: "The publisher's key and claim status still allow the receipt to pass.",
+    },
+  ];
+
+  return (
+    <section id="checks" className="border-b border-[var(--line)] bg-[var(--paper)]">
+      <div className="mx-auto grid max-w-7xl gap-8 px-5 py-14 md:px-8 md:py-20 lg:grid-cols-[0.72fr_1.28fr]">
+        <div>
+          <p className="text-sm font-bold uppercase text-[var(--brass)]">Verification boundary</p>
+          <h2 className="mt-3 font-[family-name:var(--font-display)] text-4xl font-semibold md:text-6xl">
+            What the verifier checks.
+          </h2>
+          <p className="mt-6 max-w-xl text-lg leading-8 text-[var(--muted-ink)]">
+            It does not decide whether the prose is true. It checks whether the claimed publisher anchored this
+            exact message, whether the receipt survived DNS-cache reconstruction, and whether current status still
+            allows it.
+          </p>
+          <p className="mt-5 max-w-xl text-sm font-bold leading-6">
+            It helps with phishing by exposing unsigned impersonation. A fake message can still exist, but it cannot
+            pass as signed by a domain that never anchored it.
+          </p>
+        </div>
+        <div className="grid border border-[var(--line)] bg-[var(--surface)] md:grid-cols-2">
+          {checks.map((check) => (
+            <article className="border-b border-[var(--line)] p-5 last:border-b-0 md:border-r md:[&:nth-child(2n)]:border-r-0 md:[&:nth-last-child(-n+2)]:border-b-0" key={check.label}>
+              <p className="font-mono text-xs font-bold uppercase text-[var(--danger)]">{check.label}</p>
+              <p className="mt-4 text-lg font-bold leading-7">{check.body}</p>
             </article>
           ))}
         </div>

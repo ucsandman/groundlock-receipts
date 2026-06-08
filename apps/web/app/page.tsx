@@ -8,6 +8,7 @@ import {
   PublicGood,
   ResolverCacheProof,
   ThreatModelSummary,
+  VerificationBoundary,
 } from "../components/MarketingSections";
 
 export default function Home() {
@@ -63,6 +64,7 @@ export default function Home() {
 
       <ResolverCacheProof />
       <CacheMechanism />
+      <VerificationBoundary />
       <PublicGood />
       <ThreatModelSummary />
       <Pricing />
