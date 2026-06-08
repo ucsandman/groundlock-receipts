@@ -741,6 +741,10 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
         fixture_status_records = None
     elif summary.get("statusRecordCount") != len(fixture_status_records):
         failures.append("launch summary statusRecordCount does not match DNS fixture")
+    fixture_txt_records = fixture_txt_records_for_launch_kit(args.dns_fixture)
+    if isinstance(fixture_txt_records, str):
+        failures.append(fixture_txt_records)
+        fixture_txt_records = None
 
     artifacts = summary.get("artifacts")
     if not isinstance(artifacts, dict):
@@ -821,13 +825,19 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
         )
         if web_env_result:
             failures.append(web_env_result)
+    if fixture_txt_records is not None:
+        dns_zone_result = validate_launch_kit_dns_zone(
+            root / LAUNCH_KIT_ARTIFACTS["dnsZone"], fixture_txt_records
+        )
+        if dns_zone_result:
+            failures.append(dns_zone_result)
 
     if failures:
         return CheckResult("launch-kit", False, "; ".join(failures))
     return CheckResult(
         "launch-kit",
         True,
-        "launch summary, fixture receipt metadata, web env, status records, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
+        "launch summary, fixture receipt metadata, DNS zone, web env, status records, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
     )
 
 
@@ -943,6 +953,102 @@ def validate_launch_kit_web_env(
     if web_env_failures:
         return "; ".join(web_env_failures)
     return None
+
+
+def fixture_txt_records_for_launch_kit(dns_fixture: str) -> dict[str, list[str]] | str:
+    try:
+        fixture = json.loads(Path(dns_fixture).read_text(encoding="utf-8"))
+    except OSError as exc:
+        return f"could not read DNS fixture TXT records for launch kit: {exc}"
+    except json.JSONDecodeError as exc:
+        return f"could not parse DNS fixture TXT records for launch kit: {exc}"
+    if not isinstance(fixture, dict):
+        return "DNS fixture is not an object while checking launch kit DNS zone"
+    txt = fixture.get("txt")
+    if not isinstance(txt, dict):
+        return "DNS fixture TXT records are missing while checking launch kit DNS zone"
+    normalized, failures = normalize_fixture_txt_records(txt)
+    if failures:
+        return "; ".join(failures)
+    return normalized
+
+
+def validate_launch_kit_dns_zone(
+    path: Path, fixture_txt_records: dict[str, list[str]]
+) -> str | None:
+    try:
+        zone_records, failures = parse_dns_zone_txt_records(
+            path.read_text(encoding="utf-8")
+        )
+    except OSError as exc:
+        return f"could not read {path}: {exc}"
+    if failures:
+        return "; ".join(failures)
+    if sorted(zone_records) != sorted(fixture_txt_records):
+        return "dns-zone.txt record names do not match DNS fixture TXT records"
+    for name, values in fixture_txt_records.items():
+        if sorted(zone_records.get(name, [])) != sorted(values):
+            return (
+                f"dns-zone.txt values do not match DNS fixture TXT records for {name}"
+            )
+    return None
+
+
+def parse_dns_zone_txt_records(text: str) -> tuple[dict[str, list[str]], list[str]]:
+    records: dict[str, list[str]] = {}
+    failures = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith(";") or stripped.startswith("#"):
+            continue
+        match = re.fullmatch(r"(\S+)\s+(\d+)\s+IN\s+TXT\s+(.+)", stripped, re.I)
+        if not match:
+            failures.append(f"dns-zone.txt line {line_number} is not a TXT record")
+            continue
+        name, ttl_raw, rdata = match.groups()
+        if int(ttl_raw) <= 0:
+            failures.append(f"dns-zone.txt line {line_number} has invalid TTL")
+            continue
+        value, rdata_error = parse_zone_txt_rdata(rdata)
+        if rdata_error:
+            failures.append(f"dns-zone.txt line {line_number} {rdata_error}")
+            continue
+        records.setdefault(normalize_domain(name), []).append(value)
+    return records, failures
+
+
+def parse_zone_txt_rdata(value: str) -> tuple[str, str | None]:
+    segments = []
+    index = 0
+    while index < len(value):
+        while index < len(value) and value[index].isspace():
+            index += 1
+        if index >= len(value):
+            break
+        if value[index] != '"':
+            return "", "TXT value must use quoted strings"
+        index += 1
+        chars = []
+        while index < len(value):
+            char = value[index]
+            if char == "\\":
+                index += 1
+                if index >= len(value):
+                    return "", "TXT value has trailing escape"
+                chars.append(value[index])
+                index += 1
+                continue
+            if char == '"':
+                index += 1
+                break
+            chars.append(char)
+            index += 1
+        else:
+            return "", "TXT value has unterminated quote"
+        segments.append("".join(chars))
+    if not segments:
+        return "", "TXT value is missing"
+    return "".join(segments), None
 
 
 def validate_fixture_txt_records(

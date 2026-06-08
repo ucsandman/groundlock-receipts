@@ -162,6 +162,17 @@ def production_security_headers(
     return headers
 
 
+def zone_txt_line(name: str, value: str, ttl: int = 300) -> str:
+    segments = [
+        value[offset : offset + 255] for offset in range(0, len(value), 255)
+    ] or [""]
+    escaped = [
+        segment.replace("\\", "\\\\").replace('"', '\\"') for segment in segments
+    ]
+    quoted = " ".join(f'"{segment}"' for segment in escaped)
+    return f"{name}. {ttl} IN TXT {quoted}"
+
+
 def write_launch_kit(
     root: Path,
     *,
@@ -192,9 +203,15 @@ def write_launch_kit(
     }
     status_records = [status["key"], status["claim"]]
     status_records_json = json.dumps(status_records, separators=(",", ":"))
+    zone = "\n".join(
+        zone_txt_line(name, value)
+        for name, values in sorted(fixture["txt"].items())
+        for value in values
+    )
+    zone += "\n"
     artifact_contents = {
         "dnsFixture": json.dumps(fixture, indent=2, sort_keys=True) + "\n",
-        "dnsZone": '_truename.receipts.groundlock.dev. 300 IN TXT "glt1"\n',
+        "dnsZone": zone,
         "webEnv": "\n".join(
             [
                 f"GROUNDLOCK_SIGNER_DOMAIN={domain}",
@@ -1501,6 +1518,32 @@ class HnReadinessTests(unittest.TestCase):
             "web.env status records JSON does not match DNS fixture status records",
             result.detail,
         )
+
+    def test_launch_kit_check_fails_when_dns_zone_differs_from_fixture(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            dns_zone_path = kit / "dns-zone.txt"
+            zone = dns_zone_path.read_text(encoding="utf-8")
+            dns_zone_path.write_text(
+                zone.replace("gdm1 ", "gdm1 tampered=1 ", 1),
+                encoding="utf-8",
+            )
+            refresh_launch_kit_hashes(kit)
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn("dns-zone.txt values do not match", result.detail)
 
     def test_launch_kit_check_fails_when_fixture_copy_differs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
