@@ -1,3 +1,4 @@
+import base64
 import json
 import tempfile
 import unittest
@@ -6,6 +7,21 @@ from types import SimpleNamespace
 from unittest import mock
 
 from scripts import hn_readiness
+
+
+def identity_record(kid: str, x: str = "abc") -> str:
+    jwk = (
+        base64.urlsafe_b64encode(
+            json.dumps(
+                {"crv": "Ed25519", "kty": "OKP", "x": x},
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        )
+        .decode("ascii")
+        .rstrip("=")
+    )
+    return f"glt1 kid={kid} alg=EdDSA jwk={jwk}"
 
 
 class HnReadinessTests(unittest.TestCase):
@@ -260,7 +276,9 @@ class HnReadinessTests(unittest.TestCase):
                     {
                         "domain": "receipts.groundlock.dev",
                         "txt": {
-                            "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1")
+                            ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
                             ],
@@ -297,6 +315,105 @@ class HnReadinessTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.name, "dns-fixture")
 
+    def test_dns_fixture_preflight_rejects_malformed_identity_record(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "receipts.groundlock.dev",
+                        "txt": {
+                            "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
+                            "gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                            ],
+                            "c0.gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdc1 i=0 d=abc"
+                            ],
+                        },
+                        "status": {
+                            "key": {
+                                "version": "groundlock-status/v1",
+                                "kind": "key",
+                                "subject": {
+                                    "signerDomain": "receipts.groundlock.dev",
+                                    "kid": "k1",
+                                },
+                                "status": "active",
+                            },
+                            "claim": {
+                                "version": "groundlock-status/v1",
+                                "kind": "claim",
+                                "subject": {"receiptHash": "sha256:abc"},
+                                "status": "active",
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("identity TXT", result.detail)
+        self.assertIn("malformed", result.detail)
+
+    def test_dns_fixture_preflight_rejects_ambiguous_identity_record(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "receipts.groundlock.dev",
+                        "txt": {
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1", "abc"),
+                                identity_record("k1", "def"),
+                            ],
+                            "gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                            ],
+                            "c0.gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdc1 i=0 d=abc"
+                            ],
+                        },
+                        "status": {
+                            "key": {
+                                "version": "groundlock-status/v1",
+                                "kind": "key",
+                                "subject": {
+                                    "signerDomain": "receipts.groundlock.dev",
+                                    "kid": "k1",
+                                },
+                                "status": "active",
+                            },
+                            "claim": {
+                                "version": "groundlock-status/v1",
+                                "kind": "claim",
+                                "subject": {"receiptHash": "sha256:abc"},
+                                "status": "active",
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("identity TXT", result.detail)
+        self.assertIn("ambiguous", result.detail)
+
     def test_dns_fixture_preflight_rejects_identity_for_wrong_manifest_key(
         self,
     ) -> None:
@@ -307,7 +424,9 @@ class HnReadinessTests(unittest.TestCase):
                     {
                         "domain": "receipts.groundlock.dev",
                         "txt": {
-                            "_truename.receipts.groundlock.dev": ["glt1 kid=other-key"],
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("other-key")
+                            ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
                             ],
@@ -355,7 +474,9 @@ class HnReadinessTests(unittest.TestCase):
                     {
                         "domain": "receipts.groundlock.dev",
                         "txt": {
-                            "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1")
+                            ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdm1 rh=abc ph=def n=1 key=other.groundlock.dev#k1"
                             ],
@@ -401,7 +522,7 @@ class HnReadinessTests(unittest.TestCase):
                     {
                         "domain": "other.groundlock.dev",
                         "txt": {
-                            "_truename.other.groundlock.dev": ["glt1 kid=k1"],
+                            "_truename.other.groundlock.dev": [identity_record("k1")],
                         },
                         "status": {
                             "key": {
@@ -437,7 +558,9 @@ class HnReadinessTests(unittest.TestCase):
                     {
                         "domain": "receipts.groundlock.dev",
                         "txt": {
-                            "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1")
+                            ],
                             "gl-other._groundlock.receipts.groundlock.dev": [
                                 "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
                             ],
@@ -484,7 +607,9 @@ class HnReadinessTests(unittest.TestCase):
                     {
                         "domain": "receipts.groundlock.dev",
                         "txt": {
-                            "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1")
+                            ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdm1 rh=receipt-abc ph=def n=1 key=receipts.groundlock.dev#k1"
                             ],
@@ -530,7 +655,9 @@ class HnReadinessTests(unittest.TestCase):
                     {
                         "domain": "receipts.groundlock.dev",
                         "txt": {
-                            "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1")
+                            ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdm1 rh=abc ph=def n=2 key=receipts.groundlock.dev#k1"
                             ],
@@ -581,7 +708,9 @@ class HnReadinessTests(unittest.TestCase):
                     {
                         "domain": "receipts.groundlock.dev",
                         "txt": {
-                            "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1")
+                            ],
                             f"gl-{manifest_label}._groundlock.receipts.groundlock.dev": [
                                 "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
                             ],

@@ -496,7 +496,7 @@ def validate_fixture_txt_records(
         identity_kid = parse_fixture_identity_kid(identity_values)
         if identity_kid is None:
             failures.append(
-                f"fixture identity TXT record is malformed: {identity_name}"
+                f"fixture identity TXT record is malformed or ambiguous: {identity_name}"
             )
 
     manifest_suffix = f"._groundlock.{expected_domain}"
@@ -554,17 +554,39 @@ def parse_fixture_manifest(values: list[str]) -> FixtureManifest | None:
 
 
 def parse_fixture_identity_kid(values: list[str]) -> str | None:
-    kids = set()
+    identities = set()
     for value in values:
         if not value.startswith("glt1 "):
             continue
-        kid = parse_kv_record(value, "glt1").get("kid")
-        if not kid:
-            return None
-        kids.add(kid)
-    if len(kids) != 1:
+        parts = parse_kv_record(value, "glt1")
+        kid = parts.get("kid")
+        alg = parts.get("alg")
+        jwk = parts.get("jwk")
+        if not kid or alg != "EdDSA" or not jwk:
+            continue
+        public_key = parse_base64url_json_object(jwk)
+        if public_key is None:
+            continue
+        identities.add((kid, canonical_json(public_key)))
+    if len(identities) != 1:
         return None
-    return next(iter(kids))
+    return next(iter(identities))[0]
+
+
+def parse_base64url_json_object(value: str) -> dict[str, object] | None:
+    try:
+        padding = "=" * (-len(value) % 4)
+        raw = base64.b64decode(f"{value}{padding}", altchars=b"-_", validate=True)
+        parsed = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return parsed
+
+
+def canonical_json(value: object) -> str:
+    return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
 
 def validate_manifest_chunks(
