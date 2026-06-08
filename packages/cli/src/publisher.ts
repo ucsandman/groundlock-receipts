@@ -25,6 +25,7 @@ import {
 } from "@groundlock/core";
 
 export const MAX_INPUT_BYTES = 1_000_000;
+const DNS_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 export interface SignFileOptions {
   filePath: string;
@@ -332,7 +333,7 @@ function safeFileName(value: string): string {
 function normalizeUrlOrigin(value: string): string {
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || !url.hostname) throw new Error("invalid_site_url");
+    if (!isLaunchHttpsUrl(url)) throw new Error("invalid_site_url");
     return url.origin;
   } catch {
     throw new Error("invalid_site_url");
@@ -346,11 +347,31 @@ function requireHttpsUrl(value: string | undefined, missingError: string, invali
   const raw = value.trim();
   try {
     const url = new URL(raw);
-    if (url.protocol !== "https:" || !url.hostname) throw new Error(invalidError);
+    if (!isLaunchHttpsUrl(url)) throw new Error(invalidError);
     return raw;
   } catch {
     throw new Error(invalidError);
   }
+}
+
+function isLaunchHttpsUrl(url: URL): boolean {
+  return (
+    url.protocol === "https:" &&
+    isDnsHostname(url.hostname) &&
+    url.username === "" &&
+    url.password === "" &&
+    url.search === "" &&
+    url.hash === ""
+  );
+}
+
+function isDnsHostname(hostname: string): boolean {
+  const host = hostname.trim().replace(/\.$/, "").toLowerCase();
+  if (!host || host.length > 253 || !host.includes(".")) return false;
+  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(host) || host.includes(":") || host.includes("[")) {
+    return false;
+  }
+  return host.split(".").every((label) => DNS_LABEL_RE.test(label));
 }
 
 function sameTxtSet(left: string[], right: string[]): boolean {

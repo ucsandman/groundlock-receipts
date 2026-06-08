@@ -205,6 +205,46 @@ describe("CLI entrypoint", () => {
     expect(err).toContain("invalid_doh_endpoint");
   });
 
+  it("fails export-web-env when launch URLs include credentials or query suffixes", async () => {
+    const { dir, sourcePath, blockedPath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const outDir = path.join(dir, "publish");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await main([
+      "local-publish",
+      blockedPath,
+      "--source",
+      sourcePath,
+      "--domain",
+      "publisher.example",
+      "--kid",
+      key.kid,
+      "--key",
+      JSON.stringify(key.privateKeyJwk),
+      "--public-key",
+      JSON.stringify(key.publicKeyJwk),
+      "--out",
+      outDir,
+    ]);
+    stderr.mockClear();
+
+    const code = await main([
+      "export-web-env",
+      path.join(outDir, "dns-fixture.json"),
+      "--status-base-url",
+      "https://publisher.example/groundlock/status#fragment",
+      "--site-url",
+      "https://user:pass@receipts.groundlock.dev/path",
+      "--doh-endpoint",
+      "https://resolver.example/dns-query?bootstrap=1",
+    ]);
+
+    expect(code).toBe(1);
+    const err = stderr.mock.calls.map((call) => String(call[0])).join("");
+    expect(err).toContain("invalid_doh_endpoint");
+  });
+
   it("prints setup-domain records from the actual CLI command without DNS mutation", async () => {
     const { dir } = await fixtureDir();
     const key = generateSigningKey("k1");
