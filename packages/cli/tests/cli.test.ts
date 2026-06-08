@@ -246,6 +246,40 @@ describe("CLI entrypoint", () => {
     expect(out).toContain(String(Object.keys(fixture.txt).length));
   });
 
+  it("fails warm-cache when the live DoH endpoint is missing", async () => {
+    const { dir, sourcePath, blockedPath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const outDir = path.join(dir, "publish");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await main([
+      "local-publish",
+      blockedPath,
+      "--source",
+      sourcePath,
+      "--domain",
+      "publisher.example",
+      "--kid",
+      key.kid,
+      "--key",
+      JSON.stringify(key.privateKeyJwk),
+      "--public-key",
+      JSON.stringify(key.publicKeyJwk),
+      "--out",
+      outDir,
+    ]);
+    stderr.mockClear();
+
+    const code = await main([
+      "warm-cache",
+      path.join(outDir, "dns-fixture.json"),
+    ]);
+
+    expect(code).toBe(1);
+    const err = stderr.mock.calls.map((call) => String(call[0])).join("");
+    expect(err).toContain("missing_flag:doh-endpoint");
+  });
+
   it("checks a live DNS-cache verifier deployment through DoH and status endpoints", async () => {
     const signerDomain = "publisher.example";
     const key = generateSigningKey("live-key");
@@ -309,6 +343,23 @@ describe("CLI entrypoint", () => {
 
     expect(code).toBe(0);
     expect(stdout.mock.calls.map((call) => String(call[0])).join("")).toContain("PASS verified");
+  });
+
+  it("fails check-live when the live DoH endpoint is missing", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    const code = await main([
+      "check-live",
+      "sha256:abc123",
+      "--domain",
+      "publisher.example",
+      "--status-base-url",
+      "https://status.example/groundlock",
+    ]);
+
+    expect(code).toBe(1);
+    const err = stderr.mock.calls.map((call) => String(call[0])).join("");
+    expect(err).toContain("missing_flag:doh-endpoint");
   });
 });
 

@@ -74,7 +74,7 @@ export interface LocalPublishResult {
 export interface VerifyLiveOptions {
   input: string;
   domain: string;
-  dohEndpoint?: string;
+  dohEndpoint: string;
   statusBaseUrl: string;
 }
 
@@ -87,7 +87,7 @@ export interface ExportWebEnvOptions {
 
 export interface WarmDnsCacheOptions {
   fixturePath: string;
-  dohEndpoint?: string;
+  dohEndpoint: string;
 }
 
 export interface WarmDnsCacheResult {
@@ -222,6 +222,9 @@ export async function verifyWithFixture(opts: {
 }
 
 export async function verifyLive(opts: VerifyLiveOptions): Promise<TrueNameVerifyResult> {
+  if (typeof opts.dohEndpoint !== "string" || !opts.dohEndpoint.trim()) {
+    throw new Error("missing_doh_endpoint");
+  }
   const contentHash = opts.input.startsWith("sha256:") ? opts.input : digestText(await readTextCapped(opts.input));
   const fetcher = fetchJson;
   return verifyTrueName(contentHash, opts.domain, {
@@ -247,6 +250,9 @@ export async function exportWebEnv(opts: ExportWebEnvOptions): Promise<string> {
 }
 
 export async function warmDnsCache(opts: WarmDnsCacheOptions): Promise<WarmDnsCacheResult> {
+  if (typeof opts.dohEndpoint !== "string" || !opts.dohEndpoint.trim()) {
+    throw new Error("missing_doh_endpoint");
+  }
   const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
   const resolver = createDohTxtResolver(fetchJson, opts.dohEndpoint);
   const failures: WarmDnsCacheResult["failures"] = [];

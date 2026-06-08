@@ -9,6 +9,7 @@ import {
   setupDomainRecords,
   signFile,
   warmDnsCache,
+  verifyLive,
   verifyWithFixture,
 } from "../src/publisher.js";
 import type { SourceOfTruth } from "@groundlock/core";
@@ -183,6 +184,34 @@ describe("publisher SDK", () => {
     });
 
     expect(result).toEqual({ state: "PASS", checked: Object.keys(fixture.txt).length, failures: [] });
+  });
+
+  it("refuses to warm DNS cache without an explicit DoH endpoint", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const publishDir = path.join(dir, "publish");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: publishDir,
+    });
+    const opts = { fixturePath: published.fixturePath } as unknown as Parameters<typeof warmDnsCache>[0];
+
+    await expect(warmDnsCache(opts)).rejects.toThrow("missing_doh_endpoint");
+  });
+
+  it("refuses live verification without an explicit DoH endpoint", async () => {
+    const opts = {
+      input: "sha256:abc123",
+      domain: "publisher.example",
+      statusBaseUrl: "https://publisher.example/groundlock/status",
+    } as unknown as Parameters<typeof verifyLive>[0];
+
+    await expect(verifyLive(opts)).rejects.toThrow("missing_doh_endpoint");
   });
 
   it("prints DNS cache records without HTTPS receipt storage or DNS mutation", async () => {
