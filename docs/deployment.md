@@ -194,5 +194,5 @@ The audit exits non-zero if:
 - Container image builds and its Docker healthcheck passes, if deploying by container.
 - DNS TXT identity, manifest, and chunk records are published.
 - `groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` returns PASS through the configured resolver path.
-- `groundlock check-live <file|hash> --domain <domain> --status-base-url <url>` returns PASS from the configured resolver path.
+- `groundlock check-live <file|hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>` returns PASS from the configured resolver path.
 - `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, and `npm audit --json` pass.

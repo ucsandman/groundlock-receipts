@@ -158,6 +158,8 @@ def check_launch_targets(args: argparse.Namespace) -> CheckResult:
         failures.extend(validate_public_https_url(label, url))
     if args.doh_endpoint:
         failures.extend(validate_public_https_url("doh-endpoint", args.doh_endpoint))
+    else:
+        failures.append("doh-endpoint is required for HN launch")
     failures.extend(validate_public_domain("domain", args.domain))
 
     if failures:
@@ -490,7 +492,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--status-base-url", required=True, help="public status endpoint base URL"
     )
-    parser.add_argument("--doh-endpoint", help="optional DNS-over-HTTPS endpoint")
+    parser.add_argument(
+        "--doh-endpoint", required=True, help="DNS-over-HTTPS endpoint for launch"
+    )
     parser.add_argument(
         "--repo", default=DEFAULT_REPO, help="GitHub repository for CI verification"
     )

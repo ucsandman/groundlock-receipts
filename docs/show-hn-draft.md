@@ -43,7 +43,7 @@ Deployment notes:
 docs/deployment.md documents live verifier mode with GROUNDLOCK_SIGNER_DOMAIN, DNS-over-HTTPS TXT lookups, resolver-cache warming, and HTTP key/claim status endpoints.
 `groundlock export-web-env <dns-fixture.json> --status-base-url <url> --site-url <public verifier URL>` prints the deploy env block for the public web verifier.
 `groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` warms and compares the expected DNS TXT records through the configured resolver path.
-The release gate is `groundlock check-live <file-or-hash> --domain <domain> --status-base-url <url>` returning PASS against the configured resolver path.
+The release gate is `groundlock check-live <file-or-hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>` returning PASS against the configured resolver path.
 The final go/no-go audit is `python .\scripts\hn_readiness.py --health-url <url> --dns-fixture <dns-fixture.json> --file-or-hash <file-or-hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>`.
 
 Before removing LOCAL_DEMO_ONLY, deployment needs:

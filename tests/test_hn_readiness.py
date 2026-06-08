@@ -85,6 +85,20 @@ class HnReadinessTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
 
+    def test_launch_targets_require_explicit_doh_endpoint_for_hn_launch(self) -> None:
+        result = hn_readiness.check_launch_targets(
+            SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint=None,
+                domain="receipts.groundlock.dev",
+            )
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.name, "launch-targets")
+        self.assertIn("doh-endpoint", result.detail)
+
     def test_homepage_url_strips_health_endpoint(self) -> None:
         self.assertEqual(
             hn_readiness.homepage_url(
