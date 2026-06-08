@@ -137,7 +137,7 @@ groundlock sign .\notice.txt --source .\source.json --domain publisher.example -
 
 The local web verifier does not require environment variables or secrets. It reconstructs and verifies demo DNS-cache receipt fixtures; it does not issue receipts.
 
-Production verifier mode is enabled by `GROUNDLOCK_SIGNER_DOMAIN`, with optional `GROUNDLOCK_DOH_ENDPOINT` and required `GROUNDLOCK_STATUS_BASE_URL`.
+Production verifier mode is enabled by `GROUNDLOCK_SIGNER_DOMAIN`, with `GROUNDLOCK_DOH_ENDPOINT` and `GROUNDLOCK_STATUS_BASE_URL` set for public launch.
 Public verifier rate limits default to `240` requests per `60000` ms per app instance and can be tuned with `GROUNDLOCK_RATE_LIMIT_MAX` and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS`.
 Use `.env.example` for placeholder names and deployment shape; never commit real `.env` files.
 
@@ -147,7 +147,7 @@ Never commit `.env`, `.env.local`, or real private keys.
 
 ## Show HN
 
-See [docs/show-hn-draft.md](docs/show-hn-draft.md). The current draft is marked `LOCAL_DEMO_ONLY` until stable resolver-cache warming, configured resolver targets, and status endpoints are configured.
+See [docs/show-hn-draft.md](docs/show-hn-draft.md). The current draft is marked `LOCAL_DEMO_ONLY` until stable resolver-cache warming, an explicit deployed DoH endpoint, and status endpoints are configured.
 
 After the public deployment is live, run the fail-closed launch audit before removing that marker. It checks CI, public HTTPS launch targets, live verifier health, homepage canonical/share metadata, resolver-cache warming, and live receipt verification:
 

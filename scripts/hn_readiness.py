@@ -122,6 +122,7 @@ def validate_health_body(body: str) -> CheckResult:
     required = [
         "signerDomainConfigured",
         "siteUrlConfigured",
+        "dohEndpointConfigured",
         "statusBaseUrlConfigured",
     ]
     missing = [name for name in required if checks.get(name) is not True]

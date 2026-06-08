@@ -30,6 +30,7 @@ class HnReadinessTests(unittest.TestCase):
                     "checks": {
                         "signerDomainConfigured": False,
                         "siteUrlConfigured": False,
+                        "dohEndpointConfigured": False,
                         "statusBaseUrlConfigured": False,
                     },
                 }
@@ -49,6 +50,7 @@ class HnReadinessTests(unittest.TestCase):
                     "checks": {
                         "signerDomainConfigured": True,
                         "siteUrlConfigured": True,
+                        "dohEndpointConfigured": True,
                         "statusBaseUrlConfigured": True,
                     },
                 }
@@ -56,6 +58,26 @@ class HnReadinessTests(unittest.TestCase):
         )
 
         self.assertTrue(response.ok)
+
+    def test_health_check_requires_deployed_doh_endpoint_for_launch(self) -> None:
+        response = hn_readiness.validate_health_body(
+            json.dumps(
+                {
+                    "service": "groundlock-web",
+                    "ok": True,
+                    "mode": "live",
+                    "checks": {
+                        "signerDomainConfigured": True,
+                        "siteUrlConfigured": True,
+                        "dohEndpointConfigured": False,
+                        "statusBaseUrlConfigured": True,
+                    },
+                }
+            )
+        )
+
+        self.assertFalse(response.ok)
+        self.assertIn("dohEndpointConfigured", response.detail)
 
     def test_launch_targets_reject_placeholders_local_and_non_https(self) -> None:
         result = hn_readiness.check_launch_targets(

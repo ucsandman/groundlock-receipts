@@ -20,7 +20,7 @@ GROUNDLOCK_RATE_LIMIT_MAX=240
 GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000
 ```
 
-`GROUNDLOCK_DOH_ENDPOINT` is optional and defaults to Cloudflare DoH. The DoH response must include the DNSSEC AD signal; otherwise the verifier fails closed with `dnssec_not_validated`.
+The app defaults to Cloudflare DoH when `GROUNDLOCK_DOH_ENDPOINT` is absent, which is fine for local demos. Set `GROUNDLOCK_DOH_ENDPOINT` for any public launch. The Hacker News readiness audit requires the deployed verifier to report `dohEndpointConfigured` and requires `warm-cache`, `check-live`, and `hn_readiness.py` to use the same DoH endpoint URL. The DoH response must include the DNSSEC AD signal; otherwise the verifier fails closed with `dnssec_not_validated`.
 
 `NEXT_PUBLIC_SITE_URL` should be the public HTTPS origin for the deployed verifier. It is used for canonical metadata, Open Graph images, `robots.txt`, and `sitemap.xml`. Set it before building static metadata; `robots.txt` and `sitemap.xml` also read it at runtime.
 
@@ -176,7 +176,7 @@ The audit exits non-zero if:
 - `docs/show-hn-draft.md` still contains `LOCAL_DEMO_ONLY`
 - the launch URLs are not public HTTPS URLs or the signer domain is still a placeholder/local host
 - the latest GitHub Actions `CI` run on `main` is not successful for the current git `HEAD`
-- the deployed `/api/health` response is missing, not `ok`, or still in demo mode
+- the deployed `/api/health` response is missing, not `ok`, still in demo mode, or missing signer domain, site URL, DoH endpoint, or status base URL configuration
 - the deployed homepage title, canonical URL, Open Graph URL, or share image metadata still points at localhost, a placeholder, or a different launch origin
 - `groundlock warm-cache` does not return `PASS` for the public demo fixture
 - `groundlock check-live` does not return `PASS` for the public demo receipt
@@ -189,8 +189,9 @@ The audit exits non-zero if:
 - Web env generated with `groundlock export-web-env` and installed in the deployment.
 - `GROUNDLOCK_SIGNER_DOMAIN` points at the publisher domain.
 - `NEXT_PUBLIC_SITE_URL` points at the public HTTPS verifier origin.
+- `GROUNDLOCK_DOH_ENDPOINT` points at the same explicit resolver URL used for `warm-cache`, `check-live`, and `hn_readiness.py`.
 - `GROUNDLOCK_STATUS_BASE_URL` serves key and claim status JSON.
-- `GET /api/health` returns `200` on the deployed verifier.
+- `GET /api/health` returns `200` on the deployed verifier and reports `signerDomainConfigured`, `siteUrlConfigured`, `dohEndpointConfigured`, and `statusBaseUrlConfigured`.
 - Container image builds and its Docker healthcheck passes, if deploying by container.
 - DNS TXT identity, manifest, and chunk records are published.
 - `groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` returns PASS through the configured resolver path.

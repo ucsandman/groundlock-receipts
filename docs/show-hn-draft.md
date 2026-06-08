@@ -40,8 +40,8 @@ CLI demo:
 docs/quickstart-60-second-verify.md signs a local sample, writes local DNS-cache TXT/status fixtures, reconstructs the receipt from TXT chunks, and verifies PASS from the CLI.
 
 Deployment notes:
-docs/deployment.md documents live verifier mode with GROUNDLOCK_SIGNER_DOMAIN, DNS-over-HTTPS TXT lookups, resolver-cache warming, and HTTP key/claim status endpoints.
-`groundlock export-web-env <dns-fixture.json> --status-base-url <url> --site-url <public verifier URL>` prints the deploy env block for the public web verifier.
+docs/deployment.md documents live verifier mode with GROUNDLOCK_SIGNER_DOMAIN, explicit DNS-over-HTTPS TXT lookups, resolver-cache warming, and HTTP key/claim status endpoints.
+`groundlock export-web-env <dns-fixture.json> --status-base-url <url> --site-url <public verifier URL> --doh-endpoint <url>` prints the deploy env block for the public web verifier.
 `groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` warms and compares the expected DNS TXT records through the configured resolver path.
 The release gate is `groundlock check-live <file-or-hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>` returning PASS against the configured resolver path.
 The final go/no-go audit is `python .\scripts\hn_readiness.py --health-url <url> --dns-fixture <dns-fixture.json> --file-or-hash <file-or-hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>`.
@@ -50,7 +50,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - public HTTPS deployment of the web verifier
 - non-placeholder public launch URLs and signer domain
 - stable publisher signing key managed outside the public verifier
-- configured resolver-cache warming path
+- configured `GROUNDLOCK_DOH_ENDPOINT` matching the resolver path used by `warm-cache`, `check-live`, and `hn_readiness.py`
 - configured GROUNDLOCK_SIGNER_DOMAIN, GROUNDLOCK_STATUS_BASE_URL, and public status record source
 - deployed `/api/health` returning 200
 - public homepage title, canonical URL, and share metadata matching the deployed public verifier origin
