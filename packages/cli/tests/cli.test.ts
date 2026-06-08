@@ -165,6 +165,46 @@ describe("CLI entrypoint", () => {
     expect(err).toContain("missing_flag:doh-endpoint");
   });
 
+  it("fails export-web-env when launch URLs are not HTTPS", async () => {
+    const { dir, sourcePath, blockedPath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const outDir = path.join(dir, "publish");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await main([
+      "local-publish",
+      blockedPath,
+      "--source",
+      sourcePath,
+      "--domain",
+      "publisher.example",
+      "--kid",
+      key.kid,
+      "--key",
+      JSON.stringify(key.privateKeyJwk),
+      "--public-key",
+      JSON.stringify(key.publicKeyJwk),
+      "--out",
+      outDir,
+    ]);
+    stderr.mockClear();
+
+    const code = await main([
+      "export-web-env",
+      path.join(outDir, "dns-fixture.json"),
+      "--status-base-url",
+      "https://publisher.example/groundlock/status",
+      "--site-url",
+      "https://receipts.groundlock.dev/path",
+      "--doh-endpoint",
+      "http://resolver.example/dns-query",
+    ]);
+
+    expect(code).toBe(1);
+    const err = stderr.mock.calls.map((call) => String(call[0])).join("");
+    expect(err).toContain("invalid_doh_endpoint");
+  });
+
   it("prints setup-domain records from the actual CLI command without DNS mutation", async () => {
     const { dir } = await fixtureDir();
     const key = generateSigningKey("k1");
@@ -360,6 +400,28 @@ describe("CLI entrypoint", () => {
     expect(code).toBe(1);
     const err = stderr.mock.calls.map((call) => String(call[0])).join("");
     expect(err).toContain("missing_flag:doh-endpoint");
+  });
+
+  it("fails check-live before network calls when launch URLs are invalid", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const code = await main([
+      "check-live",
+      "sha256:abc123",
+      "--domain",
+      "publisher.example",
+      "--doh-endpoint",
+      "https://resolver.example/dns-query",
+      "--status-base-url",
+      "not-url",
+    ]);
+
+    expect(code).toBe(1);
+    const err = stderr.mock.calls.map((call) => String(call[0])).join("");
+    expect(err).toContain("invalid_status_base_url");
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

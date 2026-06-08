@@ -151,6 +151,33 @@ describe("publisher SDK", () => {
     await expect(exportWebEnv(opts)).rejects.toThrow("missing_doh_endpoint");
   });
 
+  it.each([
+    ["DoH endpoint", { dohEndpoint: "http://resolver.example/dns-query" }, "invalid_doh_endpoint"],
+    ["status base URL", { statusBaseUrl: "not-url" }, "invalid_status_base_url"],
+    ["site URL", { siteUrl: "http://receipts.groundlock.dev/share" }, "invalid_site_url"],
+  ])("refuses to export a live web env block with an invalid %s", async (_label, override, error) => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const publishDir = path.join(dir, "publish");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: publishDir,
+    });
+
+    await expect(exportWebEnv({
+      fixturePath: published.fixturePath,
+      statusBaseUrl: "https://publisher.example/groundlock/status",
+      dohEndpoint: "https://resolver.example/dns-query",
+      siteUrl: "https://receipts.groundlock.dev/share",
+      ...override,
+    })).rejects.toThrow(error);
+  });
+
   it("warms and validates all DNS cache fixture TXT records through DoH", async () => {
     const { dir, sourcePath, filePath } = await fixtureDir();
     const key = generateSigningKey("k1");
@@ -204,6 +231,29 @@ describe("publisher SDK", () => {
     await expect(warmDnsCache(opts)).rejects.toThrow("missing_doh_endpoint");
   });
 
+  it("refuses to warm DNS cache with an invalid live DoH endpoint", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const publishDir = path.join(dir, "publish");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: publishDir,
+    });
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(warmDnsCache({
+      fixturePath: published.fixturePath,
+      dohEndpoint: "http://resolver.example/dns-query",
+    })).rejects.toThrow("invalid_doh_endpoint");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("refuses live verification without an explicit DoH endpoint", async () => {
     const opts = {
       input: "sha256:abc123",
@@ -212,6 +262,23 @@ describe("publisher SDK", () => {
     } as unknown as Parameters<typeof verifyLive>[0];
 
     await expect(verifyLive(opts)).rejects.toThrow("missing_doh_endpoint");
+  });
+
+  it.each([
+    ["DoH endpoint", { dohEndpoint: "http://resolver.example/dns-query" }, "invalid_doh_endpoint"],
+    ["status base URL", { statusBaseUrl: "not-url" }, "invalid_status_base_url"],
+  ])("refuses live verification with an invalid %s", async (_label, override, error) => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(verifyLive({
+      input: "sha256:abc123",
+      domain: "publisher.example",
+      dohEndpoint: "https://resolver.example/dns-query",
+      statusBaseUrl: "https://status.example/groundlock",
+      ...override,
+    })).rejects.toThrow(error);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("prints DNS cache records without HTTPS receipt storage or DNS mutation", async () => {

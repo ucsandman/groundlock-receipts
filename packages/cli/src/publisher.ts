@@ -222,39 +222,35 @@ export async function verifyWithFixture(opts: {
 }
 
 export async function verifyLive(opts: VerifyLiveOptions): Promise<TrueNameVerifyResult> {
-  if (typeof opts.dohEndpoint !== "string" || !opts.dohEndpoint.trim()) {
-    throw new Error("missing_doh_endpoint");
-  }
+  const dohEndpoint = requireHttpsUrl(opts.dohEndpoint, "missing_doh_endpoint", "invalid_doh_endpoint");
+  const statusBaseUrl = requireHttpsUrl(opts.statusBaseUrl, "missing_status_base_url", "invalid_status_base_url");
   const contentHash = opts.input.startsWith("sha256:") ? opts.input : digestText(await readTextCapped(opts.input));
   const fetcher = fetchJson;
   return verifyTrueName(contentHash, opts.domain, {
-    ...createDohTxtResolver(fetcher, opts.dohEndpoint),
-    statusResolver: createHttpStatusResolver(fetcher, opts.statusBaseUrl),
+    ...createDohTxtResolver(fetcher, dohEndpoint),
+    statusResolver: createHttpStatusResolver(fetcher, statusBaseUrl),
   });
 }
 
 export async function exportWebEnv(opts: ExportWebEnvOptions): Promise<string> {
-  if (typeof opts.dohEndpoint !== "string" || !opts.dohEndpoint.trim()) {
-    throw new Error("missing_doh_endpoint");
-  }
+  const dohEndpoint = requireHttpsUrl(opts.dohEndpoint, "missing_doh_endpoint", "invalid_doh_endpoint");
+  const statusBaseUrl = requireHttpsUrl(opts.statusBaseUrl, "missing_status_base_url", "invalid_status_base_url");
   const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
   const records = [fixture.status.key, fixture.status.claim];
   const lines = [
     `GROUNDLOCK_SIGNER_DOMAIN=${fixture.domain}`,
     ...(opts.siteUrl ? [`NEXT_PUBLIC_SITE_URL=${normalizeUrlOrigin(opts.siteUrl)}`] : []),
-    `GROUNDLOCK_DOH_ENDPOINT=${opts.dohEndpoint}`,
-    `GROUNDLOCK_STATUS_BASE_URL=${opts.statusBaseUrl}`,
+    `GROUNDLOCK_DOH_ENDPOINT=${dohEndpoint}`,
+    `GROUNDLOCK_STATUS_BASE_URL=${statusBaseUrl}`,
     `GROUNDLOCK_STATUS_RECORDS_JSON=${JSON.stringify(records)}`,
   ];
   return `${lines.join("\n")}\n`;
 }
 
 export async function warmDnsCache(opts: WarmDnsCacheOptions): Promise<WarmDnsCacheResult> {
-  if (typeof opts.dohEndpoint !== "string" || !opts.dohEndpoint.trim()) {
-    throw new Error("missing_doh_endpoint");
-  }
+  const dohEndpoint = requireHttpsUrl(opts.dohEndpoint, "missing_doh_endpoint", "invalid_doh_endpoint");
   const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
-  const resolver = createDohTxtResolver(fetchJson, opts.dohEndpoint);
+  const resolver = createDohTxtResolver(fetchJson, dohEndpoint);
   const failures: WarmDnsCacheResult["failures"] = [];
   const names = Object.keys(fixture.txt).sort();
 
@@ -335,9 +331,25 @@ function safeFileName(value: string): string {
 
 function normalizeUrlOrigin(value: string): string {
   try {
-    return new URL(value).origin;
+    const url = new URL(value);
+    if (url.protocol !== "https:" || !url.hostname) throw new Error("invalid_site_url");
+    return url.origin;
   } catch {
     throw new Error("invalid_site_url");
+  }
+}
+
+function requireHttpsUrl(value: string | undefined, missingError: string, invalidError: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(missingError);
+  }
+  const raw = value.trim();
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || !url.hostname) throw new Error(invalidError);
+    return raw;
+  } catch {
+    throw new Error(invalidError);
   }
 }
 
