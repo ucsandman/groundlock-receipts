@@ -176,11 +176,13 @@ After the public verifier, DNS records, resolver cache warming, status endpoints
 python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\dns-fixture.json --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
 ```
 
+`--health-url` must be the deployed verifier root URL or its exact `/api/health` URL. Nested app paths are rejected so the audit does not probe `<path>/api/health` or compare homepage metadata against the wrong launch URL.
+
 The audit exits non-zero if:
 
 - the git worktree is dirty
 - `docs/show-hn-draft.md` still contains `LOCAL_DEMO_ONLY`
-- the launch URLs are not public HTTPS URLs, include credentials/query/fragment suffixes, contain malformed DNS labels, or the signer domain is still a placeholder/local host or IP address
+- the launch URLs are not public HTTPS URLs, include credentials/query/fragment suffixes, contain malformed DNS labels, use a nested health URL path, or the signer domain is still a placeholder/local host or IP address
 - the latest GitHub Actions `CI` run on `main` is not successful for the current git `HEAD`
 - the deployed `/api/health` response is missing, not `ok`, still in demo mode, missing signer domain, site URL, DoH endpoint, or status base URL configuration, or missing bundled status records when the status base URL shares the verifier origin
 - the deployed homepage title, canonical URL, Open Graph URL, or share image metadata still points at localhost, a placeholder, or a different launch origin

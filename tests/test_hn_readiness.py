@@ -152,6 +152,31 @@ class HnReadinessTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
 
+    def test_launch_targets_accept_health_endpoint_path(self) -> None:
+        result = hn_readiness.check_launch_targets(
+            SimpleNamespace(
+                health_url="https://receipts.groundlock.dev/api/health",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://cloudflare-dns.com/dns-query",
+                domain="receipts.groundlock.dev",
+            )
+        )
+
+        self.assertTrue(result.ok)
+
+    def test_launch_targets_reject_nested_health_url_paths(self) -> None:
+        result = hn_readiness.check_launch_targets(
+            SimpleNamespace(
+                health_url="https://receipts.groundlock.dev/app",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://cloudflare-dns.com/dns-query",
+                domain="receipts.groundlock.dev",
+            )
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("health-url path must be / or /api/health", result.detail)
+
     def test_launch_targets_require_explicit_doh_endpoint_for_hn_launch(self) -> None:
         result = hn_readiness.check_launch_targets(
             SimpleNamespace(

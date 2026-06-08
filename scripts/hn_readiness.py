@@ -187,11 +187,8 @@ def url_origin(value: str) -> str | None:
 
 def check_launch_targets(args: argparse.Namespace) -> CheckResult:
     failures = []
-    for label, url in [
-        ("health-url", args.health_url),
-        ("status-base-url", args.status_base_url),
-    ]:
-        failures.extend(validate_public_https_url(label, url))
+    failures.extend(validate_public_health_url(args.health_url))
+    failures.extend(validate_public_https_url("status-base-url", args.status_base_url))
     if args.doh_endpoint:
         failures.extend(validate_public_https_url("doh-endpoint", args.doh_endpoint))
     else:
@@ -203,6 +200,15 @@ def check_launch_targets(args: argparse.Namespace) -> CheckResult:
     return CheckResult(
         "launch-targets", True, "launch URLs and signer domain are public HTTPS"
     )
+
+
+def validate_public_health_url(value: str) -> list[str]:
+    failures = validate_public_https_url("health-url", value)
+    parsed = urlparse(value.strip())
+    path = parsed.path.rstrip("/")
+    if path not in ("", "/api/health"):
+        failures.append("health-url path must be / or /api/health")
+    return failures
 
 
 def validate_public_https_url(label: str, value: str) -> list[str]:
@@ -586,7 +592,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--health-url",
         required=True,
-        help="deployed verifier base URL or /api/health URL",
+        help="deployed verifier root URL or exact /api/health URL",
     )
     parser.add_argument(
         "--file-or-hash",
