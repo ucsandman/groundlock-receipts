@@ -722,6 +722,19 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
     if expected_content_hash and summary.get("contentHash") != expected_content_hash:
         failures.append("launch summary contentHash does not match readiness input")
 
+    try:
+        fixture_manifest = fixture_manifest_for_input(
+            args.dns_fixture, args.domain, args.file_or_hash
+        )
+    except Exception as exc:
+        failures.append(f"could not read DNS fixture manifest for launch kit: {exc}")
+        fixture_manifest = None
+    if fixture_manifest is not None:
+        if summary.get("receiptHash") != fixture_manifest.receipt_hash:
+            failures.append("launch summary receiptHash does not match DNS fixture")
+        if summary.get("signerKeyId") != fixture_manifest.kid:
+            failures.append("launch summary signerKeyId does not match DNS fixture")
+
     artifacts = summary.get("artifacts")
     if not isinstance(artifacts, dict):
         failures.append("launch summary artifacts is missing")
@@ -792,7 +805,7 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
     return CheckResult(
         "launch-kit",
         True,
-        "launch summary, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
+        "launch summary, fixture receipt metadata, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
     )
 
 
