@@ -48,7 +48,11 @@ describe("live public verifier", () => {
 
   it.each([
     ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "http://resolver.example/dns-query", "doh_resolver_invalid"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://user:pass@resolver.example/dns-query", "doh_resolver_invalid"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://bad_label.example/dns-query", "doh_resolver_invalid"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://resolver.example/dns-query?bootstrap=1", "doh_resolver_invalid"],
     ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "not-url", "status_resolver_invalid"],
+    ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "https://status.example/groundlock#fragment", "status_resolver_invalid"],
   ])("fails closed when live mode has an invalid %s", async (_label, key, value, code) => {
     process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.example";
     process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";

@@ -19,6 +19,7 @@ import {
   type TrueNameVerifyResult,
 } from "@groundlock/core";
 import { cleanCandidate, exampleSource, fabricatingCandidate } from "./examples";
+import { configuredLaunchHttpsUrl } from "./launch-url";
 
 export const MAX_VERIFY_BYTES = 256 * 1024;
 export const RATE_LIMIT_MAX = readPositiveIntEnv("GROUNDLOCK_RATE_LIMIT_MAX", 240);
@@ -240,14 +241,7 @@ function cleanEnv(value: string | undefined): string | null {
 }
 
 function configuredHttpsUrl(value: string | null): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:" || !url.hostname) return null;
-    return value;
-  } catch {
-    return null;
-  }
+  return configuredLaunchHttpsUrl(value);
 }
 
 function readPositiveIntEnv(name: string, fallback: number): number {

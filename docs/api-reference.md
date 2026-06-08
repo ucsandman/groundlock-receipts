@@ -4,7 +4,7 @@
 
 Config-only health check for hosts and uptime monitors.
 
-It returns `200` in demo mode. In live verifier mode, it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is configured but `GROUNDLOCK_STATUS_BASE_URL` or `GROUNDLOCK_DOH_ENDPOINT` is missing, malformed, or not HTTPS. If `NEXT_PUBLIC_SITE_URL` is set, it must also be a valid HTTPS URL. If `GROUNDLOCK_STATUS_BASE_URL` points at the same origin as `NEXT_PUBLIC_SITE_URL`, it also returns `503` until `GROUNDLOCK_STATUS_RECORDS_JSON` is parseable, every entry is a valid status record, and the bundle contains at least one usable key record and one usable claim record for the bundled status routes. It reports booleans only and does not expose configured domain, resolver, status URL, or status record values.
+It returns `200` in demo mode. In live verifier mode, it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is configured but `GROUNDLOCK_STATUS_BASE_URL` or `GROUNDLOCK_DOH_ENDPOINT` is missing, malformed, not HTTPS, credentialed, query/fragment-suffixed, malformed as a DNS host, or IP-based. If `NEXT_PUBLIC_SITE_URL` is set, it must also be a valid launch HTTPS URL. If `GROUNDLOCK_STATUS_BASE_URL` points at the same origin as `NEXT_PUBLIC_SITE_URL`, it also returns `503` until `GROUNDLOCK_STATUS_RECORDS_JSON` is parseable, every entry is a valid status record, and the bundle contains at least one usable key record and one usable claim record for the bundled status routes. It reports booleans only and does not expose configured domain, resolver, status URL, or status record values.
 
 ```json
 {
@@ -29,7 +29,7 @@ Public, account-free verifier for GroundLock-canonicalized text content or `sha2
 
 The verifier reconstructs the signed receipt from DNS resolver-cache TXT manifest/chunk records, then checks receipt hashes, signatures, grounding verdict, and status.
 
-If `GROUNDLOCK_SIGNER_DOMAIN` is configured, `/api/verify` uses live DNS-over-HTTPS lookups and HTTP status endpoints. Missing, malformed, or non-HTTPS `GROUNDLOCK_DOH_ENDPOINT` or `GROUNDLOCK_STATUS_BASE_URL` returns `UNVERIFIABLE` instead of falling back to demo fixtures, an implicit resolver, or a server error. Without `GROUNDLOCK_SIGNER_DOMAIN`, it uses local demo fixtures.
+If `GROUNDLOCK_SIGNER_DOMAIN` is configured, `/api/verify` uses live DNS-over-HTTPS lookups and HTTP status endpoints. Missing, malformed, non-HTTPS, credentialed, query/fragment-suffixed, malformed-DNS-host, or IP-based `GROUNDLOCK_DOH_ENDPOINT` or `GROUNDLOCK_STATUS_BASE_URL` returns `UNVERIFIABLE` instead of falling back to demo fixtures, an implicit resolver, or a server error. Without `GROUNDLOCK_SIGNER_DOMAIN`, it uses local demo fixtures.
 
 The web app also exposes optional public status routes at `/groundlock/status/key` and `/groundlock/status/claim` when `GROUNDLOCK_STATUS_RECORDS_JSON` is configured.
 

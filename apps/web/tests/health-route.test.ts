@@ -87,8 +87,16 @@ describe("health route", () => {
 
   it.each([
     ["site URL", "NEXT_PUBLIC_SITE_URL", "not-url", "invalid_site_url"],
+    ["site URL", "NEXT_PUBLIC_SITE_URL", "https://user:pass@receipts.groundlock.dev", "invalid_site_url"],
+    ["site URL", "NEXT_PUBLIC_SITE_URL", "https://bad_label.groundlock.dev", "invalid_site_url"],
+    ["site URL", "NEXT_PUBLIC_SITE_URL", "https://127.0.0.1", "invalid_site_url"],
+    ["site URL", "NEXT_PUBLIC_SITE_URL", "https://receipts.groundlock.dev/?preview=1", "invalid_site_url"],
     ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "http://resolver.example/dns-query", "invalid_doh_endpoint"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://user:pass@resolver.example/dns-query", "invalid_doh_endpoint"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://bad_label.example/dns-query", "invalid_doh_endpoint"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://resolver.example/dns-query?bootstrap=1", "invalid_doh_endpoint"],
     ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "not-url", "invalid_status_base_url"],
+    ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "https://publisher.example/groundlock/status#fragment", "invalid_status_base_url"],
   ])("fails live mode health when %s config is invalid", async (_label, key, value, code) => {
     process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";

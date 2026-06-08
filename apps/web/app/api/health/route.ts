@@ -1,4 +1,5 @@
 import { jsonNoStore } from "../../../lib/http";
+import { configuredLaunchHttpsUrl } from "../../../lib/launch-url";
 import { readStatusRecords } from "../../../lib/status-endpoint";
 
 export const runtime = "nodejs";
@@ -119,14 +120,7 @@ function isConfigured(value: string | undefined): boolean {
 }
 
 function isConfiguredHttpsUrl(value: string | undefined): boolean {
-  const raw = value?.trim();
-  if (!raw) return false;
-  try {
-    const url = new URL(raw);
-    return url.protocol === "https:" && url.hostname.length > 0;
-  } catch {
-    return false;
-  }
+  return configuredLaunchHttpsUrl(value) !== null;
 }
 
 function hasStatusRecordKind(records: Array<{ kind: string }>, kind: "key" | "claim"): boolean {
