@@ -42,6 +42,7 @@ RESERVED_SUFFIXES = (
 OG_IMAGE_PATH = "/groundlock-receipt-desk.png"
 SITE_TITLE = "GroundLock Receipts"
 DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+CHUNK_DATA_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 MAX_WEB_VERIFY_BYTES = 256 * 1024
 STATUS_VALUES = {"active", "revoked", "retracted", "compromised"}
 
@@ -56,6 +57,7 @@ class CheckResult:
 @dataclass(frozen=True)
 class FixtureManifest:
     receipt_hash: str
+    payload_hash: str
     signer_domain: str
     kid: str
     chunk_count: int
@@ -510,10 +512,19 @@ def validate_fixture_txt_records(
 
     manifest_suffix = f"._groundlock.{expected_domain}"
     expected_manifest_name = f"gl-{cache_label(content_hash)}{manifest_suffix}"
-    manifest = parse_fixture_manifest(normalized.get(expected_manifest_name, []))
-    if manifest is None:
+    manifest_values = normalized.get(expected_manifest_name, [])
+    manifest, manifest_error = parse_fixture_manifest(manifest_values)
+    if manifest_error == "missing":
         failures.append(
             f"fixture cache manifest TXT record for demo hash is missing: {expected_manifest_name}"
+        )
+    elif manifest_error == "malformed":
+        failures.append(
+            f"fixture cache manifest TXT record is malformed: {expected_manifest_name}"
+        )
+    elif manifest_error == "ambiguous":
+        failures.append(
+            f"fixture cache manifest TXT record is ambiguous: {expected_manifest_name}"
         )
 
     if manifest is not None:
@@ -534,32 +545,58 @@ def validate_fixture_txt_records(
     return failures, manifest
 
 
-def parse_fixture_manifest(values: list[str]) -> FixtureManifest | None:
+def parse_fixture_manifest(
+    values: list[str],
+) -> tuple[FixtureManifest | None, str | None]:
+    if not values:
+        return None, "missing"
+    parsed = set()
+    malformed = False
     for value in values:
-        if not value.startswith("gdm1 "):
+        manifest = parse_fixture_manifest_record(value)
+        if manifest is None:
+            malformed = True
             continue
-        parts = parse_kv_record(value, "gdm1")
-        receipt_hash = parts.get("rh")
-        chunk_count_raw = parts.get("n")
-        key = parts.get("key")
-        if not receipt_hash or not chunk_count_raw or not key or "#" not in key:
-            return None
-        try:
-            chunk_count = int(chunk_count_raw)
-        except ValueError:
-            return None
-        if chunk_count <= 0:
-            return None
-        signer_domain, kid = key.split("#", 1)
-        if not signer_domain or not kid:
-            return None
-        return FixtureManifest(
-            receipt_hash=ensure_sha256(receipt_hash),
-            signer_domain=normalize_domain(signer_domain),
-            kid=kid,
-            chunk_count=chunk_count,
-        )
-    return None
+        parsed.add(manifest)
+    if len(parsed) == 1:
+        return next(iter(parsed)), None
+    if not parsed and malformed:
+        return None, "malformed"
+    return None, "ambiguous"
+
+
+def parse_fixture_manifest_record(value: str) -> FixtureManifest | None:
+    if not value.startswith("gdm1 "):
+        return None
+    parts = parse_kv_record(value, "gdm1")
+    receipt_hash = parts.get("rh")
+    payload_hash = parts.get("ph")
+    chunk_count_raw = parts.get("n")
+    key = parts.get("key")
+    if (
+        not receipt_hash
+        or not payload_hash
+        or not chunk_count_raw
+        or not key
+        or "#" not in key
+    ):
+        return None
+    try:
+        chunk_count = int(chunk_count_raw)
+    except ValueError:
+        return None
+    if chunk_count <= 0:
+        return None
+    signer_domain, kid = key.split("#", 1)
+    if not signer_domain or not kid:
+        return None
+    return FixtureManifest(
+        receipt_hash=ensure_sha256(receipt_hash),
+        payload_hash=ensure_sha256(payload_hash),
+        signer_domain=normalize_domain(signer_domain),
+        kid=kid,
+        chunk_count=chunk_count,
+    )
 
 
 def parse_fixture_identity_kid(values: list[str]) -> str | None:
@@ -608,12 +645,49 @@ def validate_manifest_chunks(
         if not values:
             failures.append(f"fixture cache chunk TXT record is missing: {chunk_name}")
             continue
-        expected_prefix = f"gdc1 i={index} "
-        if not any(value.startswith(expected_prefix) for value in values):
+        error = validate_fixture_chunk(values, index)
+        if error == "malformed":
             failures.append(
-                f"fixture cache chunk TXT record has wrong index: {chunk_name}"
+                f"fixture cache chunk TXT record is malformed: {chunk_name}"
+            )
+        elif error == "ambiguous":
+            failures.append(
+                f"fixture cache chunk TXT record is ambiguous: {chunk_name}"
             )
     return failures
+
+
+def validate_fixture_chunk(values: list[str], expected_index: int) -> str | None:
+    data_values = set()
+    malformed = False
+    for value in values:
+        data = parse_fixture_chunk_data(value, expected_index)
+        if data is None:
+            malformed = True
+            continue
+        data_values.add(data)
+    if len(data_values) == 1:
+        return None
+    if not data_values and malformed:
+        return "malformed"
+    return "ambiguous"
+
+
+def parse_fixture_chunk_data(value: str, expected_index: int) -> str | None:
+    if not value.startswith("gdc1 "):
+        return None
+    parts = parse_kv_record(value, "gdc1")
+    index_raw = parts.get("i")
+    data = parts.get("d")
+    if not index_raw or not data:
+        return None
+    try:
+        index = int(index_raw)
+    except ValueError:
+        return None
+    if index != expected_index or not CHUNK_DATA_RE.match(data):
+        return None
+    return data
 
 
 def parse_kv_record(value: str, prefix: str) -> dict[str, str]:

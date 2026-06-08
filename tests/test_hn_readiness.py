@@ -27,6 +27,29 @@ def identity_record(kid: str, x: str = "abc") -> str:
     return f"glt1 kid={kid} alg=EdDSA jwk={jwk}"
 
 
+def active_status_records(
+    signer_domain: str = "receipts.groundlock.dev",
+    kid: str = "k1",
+    receipt_hash: str = "sha256:abc",
+) -> dict[str, object]:
+    return {
+        "key": {
+            "version": "groundlock-status/v1",
+            "kind": "key",
+            "subject": {"signerDomain": signer_domain, "kid": kid},
+            "status": "active",
+            "issuedAt": ISSUED_AT,
+        },
+        "claim": {
+            "version": "groundlock-status/v1",
+            "kind": "claim",
+            "subject": {"receiptHash": receipt_hash},
+            "status": "active",
+            "issuedAt": ISSUED_AT,
+        },
+    }
+
+
 class HnReadinessTests(unittest.TestCase):
     def test_show_hn_draft_fails_while_marked_local_demo_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -319,6 +342,113 @@ class HnReadinessTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual(result.name, "dns-fixture")
+
+    def test_dns_fixture_preflight_rejects_malformed_manifest_record(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "receipts.groundlock.dev",
+                        "txt": {
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1")
+                            ],
+                            "gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdm1 rh=abc n=1 key=receipts.groundlock.dev#k1"
+                            ],
+                            "c0.gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdc1 i=0 d=abc"
+                            ],
+                        },
+                        "status": active_status_records(),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("manifest TXT", result.detail)
+        self.assertIn("malformed", result.detail)
+
+    def test_dns_fixture_preflight_rejects_ambiguous_manifest_record(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "receipts.groundlock.dev",
+                        "txt": {
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1")
+                            ],
+                            "gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1",
+                                "gdm1 rh=abc ph=ghi n=1 key=receipts.groundlock.dev#k1",
+                            ],
+                            "c0.gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdc1 i=0 d=abc"
+                            ],
+                        },
+                        "status": active_status_records(),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("manifest TXT", result.detail)
+        self.assertIn("ambiguous", result.detail)
+
+    def test_dns_fixture_preflight_rejects_malformed_or_ambiguous_chunks(
+        self,
+    ) -> None:
+        cases = [
+            (["gdc1 i=0 d=not*base64url"], "malformed"),
+            (["gdc1 i=0 d=abc", "gdc1 i=0 d=def"], "ambiguous"),
+        ]
+        for chunk_values, expected_detail in cases:
+            with self.subTest(expected_detail=expected_detail):
+                with tempfile.TemporaryDirectory() as tmp:
+                    fixture = Path(tmp) / "dns-fixture.json"
+                    fixture.write_text(
+                        json.dumps(
+                            {
+                                "domain": "receipts.groundlock.dev",
+                                "txt": {
+                                    "_truename.receipts.groundlock.dev": [
+                                        identity_record("k1")
+                                    ],
+                                    "gl-abc._groundlock.receipts.groundlock.dev": [
+                                        "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                                    ],
+                                    "c0.gl-abc._groundlock.receipts.groundlock.dev": chunk_values,
+                                },
+                                "status": active_status_records(),
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+
+                    result = hn_readiness.check_dns_fixture(
+                        str(fixture), "receipts.groundlock.dev", "sha256:abc"
+                    )
+
+                self.assertFalse(result.ok)
+                self.assertIn("chunk TXT", result.detail)
+                self.assertIn(expected_detail, result.detail)
 
     def test_dns_fixture_preflight_rejects_malformed_status_record_shape(
         self,
