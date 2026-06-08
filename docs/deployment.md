@@ -38,7 +38,7 @@ docker build -t groundlock-web .
 docker run --rm -p 3000:3000 groundlock-web
 ```
 
-For live verifier mode, pass the generated environment block from `groundlock export-web-env --site-url <public verifier URL>` through your host's secret/env system. For local testing, write those values to an uncommitted `.env` file and run:
+For live verifier mode, pass the generated environment block from `groundlock export-web-env --status-base-url <url> --doh-endpoint <url> --site-url <public verifier URL>` through your host's secret/env system. For local testing, write those values to an uncommitted `.env` file and run:
 
 ```powershell
 docker run --rm --env-file .env -p 3000:3000 groundlock-web
@@ -136,7 +136,7 @@ Generate the full web env block from a local publish fixture:
 groundlock export-web-env .\published\dns-fixture.json --status-base-url https://publisher.example/groundlock/status --site-url https://receipts.example.com --doh-endpoint https://cloudflare-dns.com/dns-query
 ```
 
-`--site-url` is optional for local demos, but required for a public launch because the readiness audit expects the deployed verifier to report `siteUrlConfigured` and render canonical/share metadata for the public origin. If a path is provided, the CLI writes only the origin.
+`--doh-endpoint` is required because the generated block enables live verifier mode, and live mode fails closed without an explicit resolver URL. `--site-url` is optional for local demos, but required for a public launch because the readiness audit expects the deployed verifier to report `siteUrlConfigured` and render canonical/share metadata for the public origin. If a path is provided, the CLI writes only the origin.
 
 Return the JSON status record directly:
 

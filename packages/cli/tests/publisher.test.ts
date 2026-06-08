@@ -127,6 +127,29 @@ describe("publisher SDK", () => {
     expect(env).not.toContain("publicKeyJwk");
   });
 
+  it("refuses to export a live web env block without an explicit DoH endpoint", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const publishDir = path.join(dir, "publish");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: publishDir,
+    });
+
+    const opts = {
+      fixturePath: published.fixturePath,
+      statusBaseUrl: "https://publisher.example/groundlock/status",
+      siteUrl: "https://receipts.groundlock.dev/share",
+    } as unknown as Parameters<typeof exportWebEnv>[0];
+
+    await expect(exportWebEnv(opts)).rejects.toThrow("missing_doh_endpoint");
+  });
+
   it("warms and validates all DNS cache fixture TXT records through DoH", async () => {
     const { dir, sourcePath, filePath } = await fixtureDir();
     const key = generateSigningKey("k1");

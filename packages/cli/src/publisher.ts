@@ -81,7 +81,7 @@ export interface VerifyLiveOptions {
 export interface ExportWebEnvOptions {
   fixturePath: string;
   statusBaseUrl: string;
-  dohEndpoint?: string;
+  dohEndpoint: string;
   siteUrl?: string;
 }
 
@@ -231,12 +231,15 @@ export async function verifyLive(opts: VerifyLiveOptions): Promise<TrueNameVerif
 }
 
 export async function exportWebEnv(opts: ExportWebEnvOptions): Promise<string> {
+  if (typeof opts.dohEndpoint !== "string" || !opts.dohEndpoint.trim()) {
+    throw new Error("missing_doh_endpoint");
+  }
   const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
   const records = [fixture.status.key, fixture.status.claim];
   const lines = [
     `GROUNDLOCK_SIGNER_DOMAIN=${fixture.domain}`,
     ...(opts.siteUrl ? [`NEXT_PUBLIC_SITE_URL=${normalizeUrlOrigin(opts.siteUrl)}`] : []),
-    ...(opts.dohEndpoint ? [`GROUNDLOCK_DOH_ENDPOINT=${opts.dohEndpoint}`] : []),
+    `GROUNDLOCK_DOH_ENDPOINT=${opts.dohEndpoint}`,
     `GROUNDLOCK_STATUS_BASE_URL=${opts.statusBaseUrl}`,
     `GROUNDLOCK_STATUS_RECORDS_JSON=${JSON.stringify(records)}`,
   ];

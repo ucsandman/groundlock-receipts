@@ -115,13 +115,54 @@ describe("CLI entrypoint", () => {
       "https://publisher.example/groundlock/status",
       "--site-url",
       "https://receipts.groundlock.dev/path",
+      "--doh-endpoint",
+      "https://resolver.example/dns-query",
     ]);
 
     expect(code).toBe(0);
     const out = stdout.mock.calls.map((call) => String(call[0])).join("");
     expect(out).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.example");
     expect(out).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
+    expect(out).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.example/dns-query");
     expect(out).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
+  });
+
+  it("fails export-web-env when the live DoH endpoint is missing", async () => {
+    const { dir, sourcePath, blockedPath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const outDir = path.join(dir, "publish");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await main([
+      "local-publish",
+      blockedPath,
+      "--source",
+      sourcePath,
+      "--domain",
+      "publisher.example",
+      "--kid",
+      key.kid,
+      "--key",
+      JSON.stringify(key.privateKeyJwk),
+      "--public-key",
+      JSON.stringify(key.publicKeyJwk),
+      "--out",
+      outDir,
+    ]);
+    stderr.mockClear();
+
+    const code = await main([
+      "export-web-env",
+      path.join(outDir, "dns-fixture.json"),
+      "--status-base-url",
+      "https://publisher.example/groundlock/status",
+      "--site-url",
+      "https://receipts.groundlock.dev/path",
+    ]);
+
+    expect(code).toBe(1);
+    const err = stderr.mock.calls.map((call) => String(call[0])).join("");
+    expect(err).toContain("missing_flag:doh-endpoint");
   });
 
   it("prints setup-domain records from the actual CLI command without DNS mutation", async () => {
