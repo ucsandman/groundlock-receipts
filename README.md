@@ -68,6 +68,7 @@ npm run typecheck
 npm run lint
 npm run build
 npm run dev --workspace @groundlock/web -- --hostname 127.0.0.1 --port 3000
+groundlock check-live sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status
 ```
 
 ## 60-second verify

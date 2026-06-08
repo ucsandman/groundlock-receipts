@@ -5,6 +5,7 @@ import {
   localPublish,
   setupDomainRecords,
   signFile,
+  verifyLive,
   verifyWithFixture,
   type SetupDomainRecords,
 } from "./publisher.js";
@@ -39,6 +40,17 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         input: first,
         fixturePath: requireFlag(opts, "fixture"),
         domain: opts.domain,
+      });
+      process.stdout.write(`${result.state} ${result.code} - ${result.explanation}\n`);
+      return result.state === "PASS" ? 0 : 2;
+    }
+    if (command === "check-live") {
+      requireValue(first, "file-or-hash");
+      const result = await verifyLive({
+        input: first,
+        domain: requireFlag(opts, "domain"),
+        statusBaseUrl: requireFlag(opts, "status-base-url"),
+        dohEndpoint: opts["doh-endpoint"],
       });
       process.stdout.write(`${result.state} ${result.code} - ${result.explanation}\n`);
       return result.state === "PASS" ? 0 : 2;
@@ -136,6 +148,7 @@ function help(): string {
   return [
     "groundlock sign <file> --source <json> --domain <domain> --kid <kid> --key <jwk> [--out <receipt>] [--c2pa-sidecar <json>] [--receipt-ref <url-or-path>] [--asset-format <media-type>]",
     "groundlock verify <file|hash> --fixture <dns-fixture.json> [--domain <domain>]",
+    "groundlock check-live <file|hash> --domain <domain> --status-base-url <url> [--doh-endpoint <url>]",
     "groundlock setup-domain <domain> --receipt <receipt.json> --public-key <jwk> [--chunk-size <chars>]",
     "groundlock local-publish <file> --source <json> --domain <domain> --kid <kid> --key <jwk> --public-key <jwk> --out <dir>",
   ].join("\n") + "\n";

@@ -36,6 +36,18 @@ Required TXT records:
 
 After publishing, query the manifest and all chunks through the configured recursive resolver path before announcing the receipt. Verification returns `UNVERIFIABLE` if any cache chunk is missing, malformed, not DNSSEC validated, or hash-mismatched.
 
+Use the CLI to verify the same public path the web verifier will use:
+
+```powershell
+groundlock check-live .\notice.txt --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
+```
+
+Expected output:
+
+```text
+PASS verified - DNS cache receipt verified
+```
+
 ## Status endpoints
 
 The verifier calls two public HTTPS endpoints:
@@ -76,4 +88,5 @@ Use HTTP `404` for missing status records. Use `revoked`, `retracted`, or `compr
 - `GROUNDLOCK_STATUS_BASE_URL` serves key and claim status JSON.
 - DNS TXT identity, manifest, and chunk records are published.
 - Configured resolvers are warmed and verified before links are shared.
+- `groundlock check-live <file|hash> --domain <domain> --status-base-url <url>` returns PASS from the configured resolver path.
 - `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, and `npm audit --json` pass.

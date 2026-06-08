@@ -75,6 +75,16 @@ Expected output:
 PASS verified - DNS cache receipt verified
 ```
 
+## Production live check
+
+After publishing real TXT records and status endpoints, verify the public path with:
+
+```powershell
+groundlock check-live $samplePath --domain publisher.example --status-base-url https://publisher.example/groundlock/status
+```
+
+That command uses DNS-over-HTTPS TXT lookups plus public key/claim status endpoints. It returns PASS only when the deployed resolver and status path can reconstruct and verify the receipt.
+
 ## Emit a C2PA interop sidecar
 
 ```powershell

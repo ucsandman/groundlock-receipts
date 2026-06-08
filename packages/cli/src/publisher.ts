@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   createClaimStatusRecord,
+  createDohTxtResolver,
   createDnsCacheRecords,
   createKeyStatusRecord,
   createC2paInteropSidecar,
@@ -15,7 +16,10 @@ import {
   type KeyStatusRecord,
   type ProofReceipt,
   type SourceOfTruth,
+  type StatusLookup,
   type StatusResolver,
+  type StatusRecord,
+  type StatusLookupResult,
   type TrueNameVerifyResult,
 } from "@groundlock/core";
 
@@ -64,6 +68,13 @@ export interface LocalPublishResult {
   statusPath: string;
   fixturePath: string;
   records: SetupDomainRecords;
+}
+
+export interface VerifyLiveOptions {
+  input: string;
+  domain: string;
+  dohEndpoint?: string;
+  statusBaseUrl: string;
 }
 
 interface DnsFixture {
@@ -167,6 +178,15 @@ export async function verifyWithFixture(opts: {
   );
 }
 
+export async function verifyLive(opts: VerifyLiveOptions): Promise<TrueNameVerifyResult> {
+  const contentHash = opts.input.startsWith("sha256:") ? opts.input : digestText(await readTextCapped(opts.input));
+  const fetcher = fetchJson;
+  return verifyTrueName(contentHash, opts.domain, {
+    ...createDohTxtResolver(fetcher, opts.dohEndpoint),
+    statusResolver: createHttpStatusResolver(fetcher, opts.statusBaseUrl),
+  });
+}
+
 async function readTextCapped(filePath: string): Promise<string> {
   const data = await readFile(filePath);
   if (data.byteLength > MAX_INPUT_BYTES) throw new Error("input_too_large");
@@ -217,4 +237,42 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function safeFileName(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+type FetchJson = (
+  url: string,
+  init?: { headers?: Record<string, string> },
+) => Promise<{ ok: boolean; status?: number; json(): Promise<unknown> }>;
+
+const fetchJson: FetchJson = async (url, init) => fetch(url, init);
+
+function createHttpStatusResolver(fetcher: FetchJson, baseUrl: string): StatusResolver {
+  return {
+    resolveKeyStatus: async (lookup) => fetchStatusRecord(fetcher, baseUrl, "key", lookup),
+    resolveClaimStatus: async (lookup) => fetchStatusRecord(fetcher, baseUrl, "claim", lookup),
+  };
+}
+
+async function fetchStatusRecord(
+  fetcher: FetchJson,
+  baseUrl: string,
+  kind: "key" | "claim",
+  lookup: StatusLookup,
+): Promise<StatusLookupResult> {
+  if (lookup.publicResolverAllowed !== true) {
+    return { type: "unreachable", reason: "private_status_lookup_not_supported" };
+  }
+  const url = new URL(`${baseUrl.replace(/\/+$/, "")}/${kind}`);
+  url.searchParams.set("lookup", lookup.lookupKey);
+  let body: unknown;
+  try {
+    const response = await fetcher(url.toString(), { headers: { Accept: "application/json" } });
+    if (response.status === 404) return { type: "missing", reason: "status_not_found" };
+    if (!response.ok) return { type: "unreachable", reason: "status_endpoint_unreachable" };
+    body = await response.json();
+  } catch {
+    return { type: "unreachable", reason: "status_endpoint_unreachable" };
+  }
+  if (!isRecord(body)) return { type: "malformed", reason: "status_json_malformed" };
+  return { type: "found", record: body as unknown as StatusRecord };
 }
