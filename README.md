@@ -1,5 +1,7 @@
 # GroundLock
 
+[![CI](https://github.com/ucsandman/groundlock-receipts/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ucsandman/groundlock-receipts/actions/workflows/ci.yml)
+
 GroundLock Receipts are signed AI-message proof receipts stored in DNS resolver caches. A publisher can issue a PASS or BLOCK receipt for one canonicalized message, split the signed receipt into TXT-sized chunks, warm configured DNS resolver caches, and let anyone reconstruct and verify the receipt without an account.
 
 GroundLock is narrow by design: it is a non-fabrication guarantee, not a truth oracle.

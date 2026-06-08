@@ -55,6 +55,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - reachable key and claim status records
 - public demo fixtures that do not contain secrets or private customer data
 - check-live PASS evidence for at least one public demo receipt
+- green CI run on main
 
 Repo:
 https://github.com/ucsandman/groundlock-receipts
