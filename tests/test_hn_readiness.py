@@ -9,6 +9,9 @@ from unittest import mock
 from scripts import hn_readiness
 
 
+ISSUED_AT = "2026-06-08T00:00:00.000Z"
+
+
 def identity_record(kid: str, x: str = "abc") -> str:
     jwk = (
         base64.urlsafe_b64encode(
@@ -295,6 +298,57 @@ class HnReadinessTests(unittest.TestCase):
                                     "kid": "k1",
                                 },
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
+                            },
+                            "claim": {
+                                "version": "groundlock-status/v1",
+                                "kind": "claim",
+                                "subject": {"receiptHash": "sha256:abc"},
+                                "status": "active",
+                                "issuedAt": ISSUED_AT,
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
+            )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.name, "dns-fixture")
+
+    def test_dns_fixture_preflight_rejects_malformed_status_record_shape(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "receipts.groundlock.dev",
+                        "txt": {
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1")
+                            ],
+                            "gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                            ],
+                            "c0.gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdc1 i=0 d=abc"
+                            ],
+                        },
+                        "status": {
+                            "key": {
+                                "version": "groundlock-status/v1",
+                                "kind": "key",
+                                "subject": {
+                                    "signerDomain": "receipts.groundlock.dev",
+                                    "kid": "k1",
+                                },
+                                "status": "active",
                             },
                             "claim": {
                                 "version": "groundlock-status/v1",
@@ -312,8 +366,9 @@ class HnReadinessTests(unittest.TestCase):
                 str(fixture), "receipts.groundlock.dev", "sha256:abc"
             )
 
-        self.assertTrue(result.ok)
-        self.assertEqual(result.name, "dns-fixture")
+        self.assertFalse(result.ok)
+        self.assertIn("key status record is malformed", result.detail)
+        self.assertIn("claim status record is malformed", result.detail)
 
     def test_dns_fixture_preflight_rejects_malformed_identity_record(
         self,
@@ -342,12 +397,14 @@ class HnReadinessTests(unittest.TestCase):
                                     "kid": "k1",
                                 },
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                             "claim": {
                                 "version": "groundlock-status/v1",
                                 "kind": "claim",
                                 "subject": {"receiptHash": "sha256:abc"},
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                         },
                     }
@@ -393,12 +450,14 @@ class HnReadinessTests(unittest.TestCase):
                                     "kid": "k1",
                                 },
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                             "claim": {
                                 "version": "groundlock-status/v1",
                                 "kind": "claim",
                                 "subject": {"receiptHash": "sha256:abc"},
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                         },
                     }
@@ -443,12 +502,14 @@ class HnReadinessTests(unittest.TestCase):
                                     "kid": "k1",
                                 },
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                             "claim": {
                                 "version": "groundlock-status/v1",
                                 "kind": "claim",
                                 "subject": {"receiptHash": "sha256:abc"},
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                         },
                     }
@@ -493,12 +554,14 @@ class HnReadinessTests(unittest.TestCase):
                                     "kid": "k1",
                                 },
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                             "claim": {
                                 "version": "groundlock-status/v1",
                                 "kind": "claim",
                                 "subject": {"receiptHash": "sha256:abc"},
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                         },
                     }
@@ -533,6 +596,7 @@ class HnReadinessTests(unittest.TestCase):
                                     "kid": "k1",
                                 },
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                         },
                     }
@@ -577,12 +641,14 @@ class HnReadinessTests(unittest.TestCase):
                                     "kid": "k1",
                                 },
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                             "claim": {
                                 "version": "groundlock-status/v1",
                                 "kind": "claim",
                                 "subject": {"receiptHash": "sha256:abc"},
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                         },
                     }
@@ -626,12 +692,14 @@ class HnReadinessTests(unittest.TestCase):
                                     "kid": "other-key",
                                 },
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                             "claim": {
                                 "version": "groundlock-status/v1",
                                 "kind": "claim",
                                 "subject": {"receiptHash": "sha256:other-receipt"},
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                         },
                     }
@@ -674,12 +742,14 @@ class HnReadinessTests(unittest.TestCase):
                                     "kid": "k1",
                                 },
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                             "claim": {
                                 "version": "groundlock-status/v1",
                                 "kind": "claim",
                                 "subject": {"receiptHash": "sha256:abc"},
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                         },
                     }
@@ -727,12 +797,14 @@ class HnReadinessTests(unittest.TestCase):
                                     "kid": "k1",
                                 },
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                             "claim": {
                                 "version": "groundlock-status/v1",
                                 "kind": "claim",
                                 "subject": {"receiptHash": "sha256:abc"},
                                 "status": "active",
+                                "issuedAt": ISSUED_AT,
                             },
                         },
                     }

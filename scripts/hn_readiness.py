@@ -43,6 +43,7 @@ OG_IMAGE_PATH = "/groundlock-receipt-desk.png"
 SITE_TITLE = "GroundLock Receipts"
 DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 MAX_WEB_VERIFY_BYTES = 256 * 1024
+STATUS_VALUES = {"active", "revoked", "retracted", "compromised"}
 
 
 @dataclass(frozen=True)
@@ -458,12 +459,20 @@ def check_dns_fixture(path: str, domain: str, file_or_hash: str) -> CheckResult:
         claim = status.get("claim")
         if not isinstance(key, dict) or key.get("kind") != "key":
             failures.append("fixture key status record is missing")
-        elif manifest is not None:
-            failures.extend(validate_key_status_record(key, manifest))
+        else:
+            key_shape_failures = validate_status_record_shape(key, "key")
+            if key_shape_failures:
+                failures.extend(key_shape_failures)
+            elif manifest is not None:
+                failures.extend(validate_key_status_record(key, manifest))
         if not isinstance(claim, dict) or claim.get("kind") != "claim":
             failures.append("fixture claim status record is missing")
-        elif manifest is not None:
-            failures.extend(validate_claim_status_record(claim, manifest))
+        else:
+            claim_shape_failures = validate_status_record_shape(claim, "claim")
+            if claim_shape_failures:
+                failures.extend(claim_shape_failures)
+            elif manifest is not None:
+                failures.extend(validate_claim_status_record(claim, manifest))
 
     if failures:
         return CheckResult("dns-fixture", False, "; ".join(failures))
@@ -638,6 +647,21 @@ def validate_key_status_record(
     if record.get("status") != "active":
         failures.append("fixture key status is not active")
     return failures
+
+
+def validate_status_record_shape(
+    record: dict[object, object], expected_kind: str
+) -> list[str]:
+    if (
+        record.get("version") != "groundlock-status/v1"
+        or record.get("kind") != expected_kind
+        or not isinstance(record.get("issuedAt"), str)
+        or not record.get("issuedAt")
+        or record.get("status") not in STATUS_VALUES
+        or ("reason" in record and not isinstance(record.get("reason"), str))
+    ):
+        return [f"fixture {expected_kind} status record is malformed"]
+    return []
 
 
 def validate_claim_status_record(
