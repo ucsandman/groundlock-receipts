@@ -706,6 +706,18 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
         failures.append("launch summary statusBaseUrl does not match readiness input")
     if summary.get("dohEndpoint") != args.doh_endpoint:
         failures.append("launch summary dohEndpoint does not match readiness input")
+    summary_fetch_timeout_ms = summary.get("fetchTimeoutMs")
+    if not isinstance(summary_fetch_timeout_ms, int) or isinstance(
+        summary_fetch_timeout_ms, bool
+    ):
+        failures.append("launch summary fetchTimeoutMs is missing")
+        summary_fetch_timeout_ms = None
+    elif (
+        summary_fetch_timeout_ms < 1 or summary_fetch_timeout_ms > MAX_FETCH_TIMEOUT_MS
+    ):
+        failures.append(
+            f"launch summary fetchTimeoutMs must be between 1 and {MAX_FETCH_TIMEOUT_MS} ms"
+        )
 
     summary_domain = summary.get("domain")
     if not isinstance(summary_domain, str):
@@ -823,6 +835,7 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
             args,
             fixture_status_records,
             expected_site_url,
+            summary_fetch_timeout_ms,
         )
         if web_env_result:
             failures.append(web_env_result)
@@ -908,6 +921,7 @@ def validate_launch_kit_web_env(
     args: argparse.Namespace,
     fixture_status_records: list[dict[str, object]],
     expected_site_url: str | None,
+    expected_fetch_timeout_ms: int | None,
 ) -> str | None:
     try:
         entries, failures = parse_web_env(path.read_text(encoding="utf-8"))
@@ -949,6 +963,13 @@ def validate_launch_kit_web_env(
         if timeout_ms < 1 or timeout_ms > MAX_FETCH_TIMEOUT_MS:
             web_env_failures.append(
                 f"web.env fetch timeout must be between 1 and {MAX_FETCH_TIMEOUT_MS} ms"
+            )
+        elif (
+            expected_fetch_timeout_ms is not None
+            and timeout_ms != expected_fetch_timeout_ms
+        ):
+            web_env_failures.append(
+                "web.env fetch timeout does not match launch summary"
             )
     try:
         bundled_status_records = json.loads(entries["GROUNDLOCK_STATUS_RECORDS_JSON"])

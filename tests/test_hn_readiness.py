@@ -246,6 +246,7 @@ def write_launch_kit(
         "contentHash": content_hash,
         "receiptHash": str(parts["receipt_hash"]),
         "signerKeyId": kid,
+        "fetchTimeoutMs": 5000,
         "receiptVerdict": "pass",
         "statusRecordCount": 2,
         "artifacts": hn_readiness.LAUNCH_KIT_ARTIFACTS,
@@ -1550,6 +1551,66 @@ class HnReadinessTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn("web.env fetch timeout", result.detail)
+
+    def test_launch_kit_check_fails_when_summary_fetch_timeout_is_not_integer(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            summary_path = kit / "launch-summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["fetchTimeoutMs"] = True
+            summary_path.write_text(
+                json.dumps(summary, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn("launch summary fetchTimeoutMs is missing", result.detail)
+
+    def test_launch_kit_check_fails_when_web_env_fetch_timeout_differs_from_summary(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            web_env_path = kit / "web.env"
+            lines = web_env_path.read_text(encoding="utf-8").splitlines()
+            updated = [
+                (
+                    "GROUNDLOCK_FETCH_TIMEOUT_MS=8000"
+                    if line.startswith("GROUNDLOCK_FETCH_TIMEOUT_MS=")
+                    else line
+                )
+                for line in lines
+            ]
+            web_env_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+            refresh_launch_kit_hashes(kit)
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            "web.env fetch timeout does not match launch summary",
+            result.detail,
+        )
 
     def test_launch_kit_check_fails_when_dns_zone_differs_from_fixture(
         self,
