@@ -155,9 +155,45 @@ def check_git_clean() -> CheckResult:
     return CheckResult("git", True, "worktree clean")
 
 
+def current_git_head() -> str | None:
+    proc = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=str(ROOT), capture_output=True, text=True
+    )
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def validate_ci_runs(runs: object, expected_head_sha: str | None) -> CheckResult:
+    if not isinstance(runs, list) or not runs:
+        return CheckResult("ci", False, "no CI runs found")
+
+    run = runs[0]
+    if not isinstance(run, dict):
+        return CheckResult("ci", False, "CI run data is malformed")
+    status = run.get("status")
+    conclusion = run.get("conclusion")
+    head_sha = run.get("headSha")
+    if expected_head_sha and head_sha != expected_head_sha:
+        return CheckResult(
+            "ci",
+            False,
+            f"latest CI headSha={head_sha} does not match current HEAD={expected_head_sha}",
+        )
+    if status != "completed" or conclusion != "success":
+        return CheckResult(
+            "ci", False, f"latest CI is status={status} conclusion={conclusion}"
+        )
+    return CheckResult("ci", True, f"latest CI run {run.get('databaseId')} succeeded")
+
+
 def check_ci(repo: str, branch: str) -> CheckResult:
     if shutil.which("gh") is None:
         return CheckResult("ci", False, "GitHub CLI gh is required to verify CI status")
+
+    expected_head_sha = current_git_head()
+    if expected_head_sha is None:
+        return CheckResult("ci", False, "could not read current git HEAD")
 
     proc = subprocess.run(
         [
@@ -186,19 +222,7 @@ def check_ci(repo: str, branch: str) -> CheckResult:
         runs = json.loads(proc.stdout)
     except json.JSONDecodeError as exc:
         return CheckResult("ci", False, f"could not parse gh output: {exc}")
-    if not isinstance(runs, list) or not runs:
-        return CheckResult("ci", False, "no CI runs found")
-
-    run = runs[0]
-    if not isinstance(run, dict):
-        return CheckResult("ci", False, "CI run data is malformed")
-    status = run.get("status")
-    conclusion = run.get("conclusion")
-    if status != "completed" or conclusion != "success":
-        return CheckResult(
-            "ci", False, f"latest CI is status={status} conclusion={conclusion}"
-        )
-    return CheckResult("ci", True, f"latest CI run {run.get('databaseId')} succeeded")
+    return validate_ci_runs(runs, expected_head_sha)
 
 
 def run_checks(args: argparse.Namespace) -> list[CheckResult]:

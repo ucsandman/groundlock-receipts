@@ -131,7 +131,7 @@ The audit exits non-zero if:
 
 - the git worktree is dirty
 - `docs/show-hn-draft.md` still contains `LOCAL_DEMO_ONLY`
-- the latest GitHub Actions `CI` run on `main` is not successful
+- the latest GitHub Actions `CI` run on `main` is not successful for the current git `HEAD`
 - the deployed `/api/health` response is missing, not `ok`, or still in demo mode
 - `groundlock check-live` does not return `PASS` for the public demo receipt
 

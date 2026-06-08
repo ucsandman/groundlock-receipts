@@ -70,6 +70,38 @@ class HnReadinessTests(unittest.TestCase):
         self.assertIn("--doh-endpoint", argv)
         self.assertIn("https://resolver.example/dns-query", argv)
 
+    def test_ci_check_rejects_successful_run_for_older_commit(self) -> None:
+        result = hn_readiness.validate_ci_runs(
+            [
+                {
+                    "status": "completed",
+                    "conclusion": "success",
+                    "databaseId": 123,
+                    "headSha": "older",
+                }
+            ],
+            expected_head_sha="current",
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("current", result.detail)
+        self.assertIn("older", result.detail)
+
+    def test_ci_check_accepts_successful_run_for_current_commit(self) -> None:
+        result = hn_readiness.validate_ci_runs(
+            [
+                {
+                    "status": "completed",
+                    "conclusion": "success",
+                    "databaseId": 123,
+                    "headSha": "current",
+                }
+            ],
+            expected_head_sha="current",
+        )
+
+        self.assertTrue(result.ok)
+
 
 if __name__ == "__main__":
     unittest.main()
