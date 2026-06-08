@@ -16,6 +16,7 @@ import sys
 import unicodedata
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
@@ -1247,6 +1248,74 @@ def check_ci(repo: str, branch: str) -> CheckResult:
     return validate_ci_runs(runs, expected_head_sha)
 
 
+def utc_timestamp() -> str:
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256(path.read_bytes()).digest()
+    encoded = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+    return f"sha256:{encoded}"
+
+
+def evidence_inputs(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        "healthUrl": args.health_url,
+        "homepageUrl": homepage_url(args.health_url),
+        "verifyEndpoint": verify_endpoint(args.health_url),
+        "dnsFixture": args.dns_fixture,
+        "fileOrHash": args.file_or_hash,
+        "domain": args.domain,
+        "statusBaseUrl": args.status_base_url,
+        "dohEndpoint": args.doh_endpoint,
+        "repo": args.repo,
+        "branch": args.branch,
+        "showHnDraft": args.show_hn_draft,
+    }
+
+
+def result_evidence(result: CheckResult) -> dict[str, object]:
+    return {"name": result.name, "ok": result.ok, "detail": result.detail}
+
+
+def build_evidence_report(
+    args: argparse.Namespace, results: list[CheckResult]
+) -> dict[str, object]:
+    contract_path = ROOT / "apps" / "web" / "lib" / "security-header-contract.json"
+    return {
+        "schema": "groundlock-hn-readiness-evidence/v1",
+        "generatedAt": utc_timestamp(),
+        "ok": all(result.ok for result in results),
+        "gitHead": current_git_head(),
+        "securityHeaderContract": {
+            "path": str(contract_path.relative_to(ROOT)),
+            "sha256": file_sha256(contract_path),
+        },
+        "inputs": evidence_inputs(args),
+        "checks": [result_evidence(result) for result in results],
+    }
+
+
+def write_evidence_report(
+    path: str, args: argparse.Namespace, results: list[CheckResult]
+) -> CheckResult:
+    try:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        report = build_evidence_report(args, results)
+        target.write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+    except Exception as exc:
+        return CheckResult("evidence", False, f"could not write evidence report: {exc}")
+    return CheckResult("evidence", True, f"wrote readiness evidence to {path}")
+
+
 def run_checks(args: argparse.Namespace) -> list[CheckResult]:
     preflight = [
         check_git_clean(),
@@ -1325,12 +1394,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--show-hn-draft", default=str(DEFAULT_DRAFT_PATH), help="Show HN draft path"
     )
+    parser.add_argument(
+        "--evidence-out",
+        help="optional path for a machine-readable readiness evidence JSON report",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     results = run_checks(args)
+    if args.evidence_out:
+        results = [*results, write_evidence_report(args.evidence_out, args, results)]
     for result in results:
         state = "PASS" if result.ok else "FAIL"
         print(f"{state} {result.name}: {result.detail}")

@@ -1,4 +1,6 @@
 import base64
+import contextlib
+import io
 import json
 import tempfile
 import unittest
@@ -1393,6 +1395,111 @@ class HnReadinessTests(unittest.TestCase):
             "receipts.groundlock.dev",
             "sha256:receipt",
         )
+
+    def test_builds_machine_readable_evidence_report(self) -> None:
+        args = SimpleNamespace(
+            health_url="https://receipts.groundlock.dev/api/health",
+            status_base_url="https://receipts.groundlock.dev/groundlock/status",
+            doh_endpoint="https://resolver.groundlock.dev/dns-query",
+            domain="receipts.groundlock.dev",
+            show_hn_draft="docs/show-hn-draft.md",
+            repo="ucsandman/groundlock-receipts",
+            branch="main",
+            dns_fixture="published/dns-fixture.json",
+            file_or_hash="sha256:abc123",
+        )
+        results = [
+            hn_readiness.CheckResult("git", True, "worktree clean"),
+            hn_readiness.CheckResult("health", True, "ready"),
+        ]
+
+        with mock.patch.object(hn_readiness, "current_git_head", return_value="abc"):
+            report = hn_readiness.build_evidence_report(args, results)
+
+        self.assertEqual(report["schema"], "groundlock-hn-readiness-evidence/v1")
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["gitHead"], "abc")
+        self.assertEqual(
+            report["inputs"],
+            {
+                "healthUrl": "https://receipts.groundlock.dev/api/health",
+                "homepageUrl": "https://receipts.groundlock.dev/",
+                "verifyEndpoint": "https://receipts.groundlock.dev/api/verify",
+                "dnsFixture": "published/dns-fixture.json",
+                "fileOrHash": "sha256:abc123",
+                "domain": "receipts.groundlock.dev",
+                "statusBaseUrl": "https://receipts.groundlock.dev/groundlock/status",
+                "dohEndpoint": "https://resolver.groundlock.dev/dns-query",
+                "repo": "ucsandman/groundlock-receipts",
+                "branch": "main",
+                "showHnDraft": "docs/show-hn-draft.md",
+            },
+        )
+        self.assertEqual(report["checks"][0]["name"], "git")
+        self.assertTrue(
+            str(report["securityHeaderContract"]["sha256"]).startswith("sha256:")
+        )
+
+    def test_evidence_report_write_failure_fails_closed(self) -> None:
+        args = SimpleNamespace(
+            health_url="https://receipts.groundlock.dev",
+            status_base_url="https://receipts.groundlock.dev/groundlock/status",
+            doh_endpoint="https://resolver.groundlock.dev/dns-query",
+            domain="receipts.groundlock.dev",
+            show_hn_draft="docs/show-hn-draft.md",
+            repo="ucsandman/groundlock-receipts",
+            branch="main",
+            dns_fixture="published/dns-fixture.json",
+            file_or_hash="sha256:abc123",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = hn_readiness.write_evidence_report(
+                tmp, args, [hn_readiness.CheckResult("mock", True, "ok")]
+            )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.name, "evidence")
+
+    def test_main_writes_optional_evidence_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence_path = Path(tmp) / "hn-readiness-evidence.json"
+            ok = hn_readiness.CheckResult("mock", True, "ok")
+            argv = [
+                "--health-url",
+                "https://receipts.groundlock.dev",
+                "--status-base-url",
+                "https://receipts.groundlock.dev/groundlock/status",
+                "--doh-endpoint",
+                "https://resolver.groundlock.dev/dns-query",
+                "--domain",
+                "receipts.groundlock.dev",
+                "--show-hn-draft",
+                "docs/show-hn-draft.md",
+                "--repo",
+                "ucsandman/groundlock-receipts",
+                "--branch",
+                "main",
+                "--dns-fixture",
+                "published/dns-fixture.json",
+                "--file-or-hash",
+                "sha256:abc123",
+                "--evidence-out",
+                str(evidence_path),
+            ]
+
+            with (
+                mock.patch.object(hn_readiness, "run_checks", return_value=[ok]),
+                mock.patch.object(hn_readiness, "current_git_head", return_value="abc"),
+            ):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    code = hn_readiness.main(argv)
+
+            report = json.loads(evidence_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(code, 0)
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["checks"][0]["name"], "mock")
+        self.assertEqual(report["gitHead"], "abc")
 
     def test_builds_local_check_live_command_without_shell(self) -> None:
         argv = hn_readiness.build_check_live_argv(

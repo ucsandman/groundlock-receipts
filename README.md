@@ -88,7 +88,7 @@ groundlock setup-domain publisher.example --receipt .\receipt.json --public-key 
 groundlock setup-domain publisher.example --receipt .\receipt.json --public-key .\public.jwk --format zone --ttl 300
 groundlock warm-cache .\published\dns-fixture.json --doh-endpoint https://cloudflare-dns.com/dns-query
 groundlock check-live sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
-python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\dns-fixture.json --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
+python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\dns-fixture.json --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --evidence-out .\published\hn-readiness-evidence.json
 ```
 
 ## 60-second verify
@@ -153,7 +153,7 @@ See [docs/show-hn-draft.md](docs/show-hn-draft.md). The current draft is marked 
 After the public deployment is live, run the fail-closed launch audit before removing that marker. It checks CI, public HTTPS launch targets, live verifier health, homepage canonical/share metadata, resolver-cache warming, live receipt verification, and the deployed `/api/verify` endpoint:
 
 ```powershell
-python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\dns-fixture.json --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
+python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\dns-fixture.json --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --evidence-out .\published\hn-readiness-evidence.json
 ```
 
 ## License

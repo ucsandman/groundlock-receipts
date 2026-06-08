@@ -174,12 +174,14 @@ Use HTTP `404` for missing status records. Use `revoked`, `retracted`, or `compr
 After the public verifier, DNS records, resolver cache warming, status endpoints, and CI are in place, run:
 
 ```powershell
-python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\dns-fixture.json --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
+python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\dns-fixture.json --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --evidence-out .\published\hn-readiness-evidence.json
 ```
 
 `--health-url` must be the deployed verifier root URL or its exact `/api/health` URL. Nested app paths are rejected so the audit does not probe `<path>/api/health` or compare homepage metadata against the wrong launch URL.
 
 `--dns-fixture` must be the fixture generated for the same launch domain and the same `--file-or-hash` demo input. The audit checks the fixture JSON before external requests and requires matching `domain`, a valid unambiguous identity TXT whose `kid` matches the manifest key, a valid unambiguous manifest TXT for the demo hash whose signer domain matches the launch domain, every valid unambiguous chunk TXT declared by the manifest `n=<count>`, reconstructed chunk payload that matches manifest `ph`, cached receipt JSON whose signer, candidate content hash, and body hash match the manifest, and valid active `groundlock-status/v1` key/claim status entries whose subjects match the manifest key and receipt hash.
+
+`--evidence-out` is optional but recommended for launch. It writes a versioned JSON report containing the public launch inputs, current git head, security-header contract hash, and every PASS/FAIL check result. If the evidence file cannot be written, the audit exits non-zero.
 
 The audit exits non-zero if:
 
@@ -213,4 +215,5 @@ The audit exits non-zero if:
 - `groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` returns PASS through the configured resolver path.
 - `groundlock check-live <file|hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>` returns PASS from the configured resolver path.
 - The deployed `POST /api/verify` endpoint returns PASS for the same public demo file or hash, with `receiptSummary.signerDomain` matching the launch domain, `receiptSummary.contentHash` matching the demo hash, and `receiptSummary.receiptHash` matching the DNS fixture manifest receipt hash.
+- `scripts/hn_readiness.py --evidence-out <path>` writes a JSON evidence report whose `ok` field is `true`.
 - `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, and `npm audit --json` pass.
