@@ -46,6 +46,33 @@ DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 CHUNK_DATA_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 MAX_WEB_VERIFY_BYTES = 256 * 1024
 STATUS_VALUES = {"active", "revoked", "retracted", "compromised"}
+LAUNCH_KIT_ARTIFACTS = {
+    "dnsFixture": "dns-fixture.json",
+    "dnsZone": "dns-zone.txt",
+    "webEnv": "web.env",
+    "statusRecords": "status-records.json",
+    "launchSummary": "launch-summary.json",
+    "hnReadiness": "hn-readiness.ps1",
+    "runbook": "runbook.md",
+    "checksums": "checksums.txt",
+}
+LAUNCH_KIT_CHECKSUMMED_ARTIFACTS = {
+    key: LAUNCH_KIT_ARTIFACTS[key]
+    for key in (
+        "dnsFixture",
+        "dnsZone",
+        "webEnv",
+        "statusRecords",
+        "hnReadiness",
+        "runbook",
+    )
+}
+PRIVATE_KEY_MARKERS = (
+    "privateKeyJwk",
+    "BEGIN PRIVATE KEY",
+    "BEGIN RSA PRIVATE KEY",
+    "BEGIN EC PRIVATE KEY",
+)
 
 
 def load_security_header_contract() -> tuple[dict[str, list[str]], list[str]]:
@@ -624,6 +651,148 @@ def check_dns_fixture(path: str, domain: str, file_or_hash: str) -> CheckResult:
         return CheckResult("dns-fixture", False, "; ".join(failures))
     return CheckResult(
         "dns-fixture", True, "fixture domain, TXT records, and statuses match launch"
+    )
+
+
+def parse_launch_kit_checksums(text: str) -> tuple[dict[str, str], list[str]]:
+    entries: dict[str, str] = {}
+    failures = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        parts = stripped.split()
+        if len(parts) != 2:
+            failures.append(
+                f"checksums.txt line {line_number} must be '<sha256> <artifact>'"
+            )
+            continue
+        digest, artifact_name = parts
+        if not digest.startswith("sha256:"):
+            failures.append(f"checksums.txt line {line_number} digest is not sha256")
+        if artifact_name in entries:
+            failures.append(f"checksums.txt repeats artifact {artifact_name!r}")
+        entries[artifact_name] = digest
+    return entries, failures
+
+
+def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
+    root = Path(path)
+    if not root.is_dir():
+        return CheckResult("launch-kit", False, f"{path} is not a directory")
+
+    summary_path = root / LAUNCH_KIT_ARTIFACTS["launchSummary"]
+    checksums_path = root / LAUNCH_KIT_ARTIFACTS["checksums"]
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return CheckResult("launch-kit", False, f"could not read {summary_path}: {exc}")
+    except json.JSONDecodeError as exc:
+        return CheckResult("launch-kit", False, f"invalid launch summary JSON: {exc}")
+    if not isinstance(summary, dict):
+        return CheckResult("launch-kit", False, "launch summary is not a JSON object")
+
+    failures = []
+    if summary.get("schema") != "groundlock-launch-kit/v1":
+        failures.append("launch summary schema is not groundlock-launch-kit/v1")
+
+    expected_site_url = url_origin(args.health_url)
+    if summary.get("siteUrl") != expected_site_url:
+        failures.append("launch summary siteUrl does not match health-url origin")
+    if summary.get("healthUrl") != expected_site_url:
+        failures.append("launch summary healthUrl does not match health-url origin")
+    if summary.get("statusBaseUrl") != args.status_base_url:
+        failures.append("launch summary statusBaseUrl does not match readiness input")
+    if summary.get("dohEndpoint") != args.doh_endpoint:
+        failures.append("launch summary dohEndpoint does not match readiness input")
+
+    summary_domain = summary.get("domain")
+    if not isinstance(summary_domain, str):
+        failures.append("launch summary domain is missing")
+    elif normalize_domain(summary_domain) != normalize_domain(args.domain):
+        failures.append("launch summary domain does not match readiness input")
+
+    if summary.get("receiptVerdict") != "pass":
+        failures.append("launch summary receiptVerdict is not pass")
+    try:
+        expected_content_hash = content_hash_for_input(args.file_or_hash)
+    except Exception as exc:
+        failures.append(f"could not compute readiness input hash: {exc}")
+        expected_content_hash = None
+    if expected_content_hash and summary.get("contentHash") != expected_content_hash:
+        failures.append("launch summary contentHash does not match readiness input")
+
+    artifacts = summary.get("artifacts")
+    if not isinstance(artifacts, dict):
+        failures.append("launch summary artifacts is missing")
+        artifacts = {}
+    artifact_sha256 = summary.get("artifactSha256")
+    if not isinstance(artifact_sha256, dict):
+        failures.append("launch summary artifactSha256 is missing")
+        artifact_sha256 = {}
+
+    for key, artifact_name in LAUNCH_KIT_ARTIFACTS.items():
+        if artifacts.get(key) != artifact_name:
+            failures.append(
+                f"launch summary artifact {key} is {artifacts.get(key)!r}, expected {artifact_name!r}"
+            )
+
+    try:
+        checksum_entries, checksum_failures = parse_launch_kit_checksums(
+            checksums_path.read_text(encoding="utf-8")
+        )
+    except OSError as exc:
+        failures.append(f"could not read {checksums_path}: {exc}")
+        checksum_entries, checksum_failures = {}, []
+    failures.extend(checksum_failures)
+
+    expected_checksum_names = set(LAUNCH_KIT_CHECKSUMMED_ARTIFACTS.values())
+    actual_checksum_names = set(checksum_entries)
+    missing_checksums = sorted(expected_checksum_names - actual_checksum_names)
+    if missing_checksums:
+        failures.append(f"checksums.txt is missing {', '.join(missing_checksums)}")
+    extra_checksums = sorted(actual_checksum_names - expected_checksum_names)
+    if extra_checksums:
+        failures.append(
+            f"checksums.txt includes unexpected artifacts: {', '.join(extra_checksums)}"
+        )
+
+    for key, artifact_name in LAUNCH_KIT_CHECKSUMMED_ARTIFACTS.items():
+        artifact_path = root / artifact_name
+        if not artifact_path.is_file():
+            failures.append(f"launch kit artifact is missing: {artifact_name}")
+            continue
+        actual_digest = file_sha256(artifact_path)
+        if artifact_sha256.get(key) != actual_digest:
+            failures.append(f"artifactSha256.{key} does not match {artifact_name}")
+        if checksum_entries.get(artifact_name) != actual_digest:
+            failures.append(f"checksums.txt digest does not match {artifact_name}")
+        try:
+            text = artifact_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            failures.append(f"could not scan {artifact_name}: {exc}")
+            continue
+        for marker in PRIVATE_KEY_MARKERS:
+            if marker in text:
+                failures.append(
+                    f"{artifact_name} contains private key marker {marker!r}"
+                )
+
+    kit_fixture_path = root / LAUNCH_KIT_ARTIFACTS["dnsFixture"]
+    try:
+        if file_sha256(kit_fixture_path) != file_sha256(Path(args.dns_fixture)):
+            failures.append(
+                "launch kit dns-fixture.json does not match readiness fixture"
+            )
+    except OSError as exc:
+        failures.append(f"could not compare readiness fixture with launch kit: {exc}")
+
+    if failures:
+        return CheckResult("launch-kit", False, "; ".join(failures))
+    return CheckResult(
+        "launch-kit",
+        True,
+        "launch summary, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
     )
 
 
@@ -1264,7 +1433,7 @@ def file_sha256(path: Path) -> str:
 
 
 def evidence_inputs(args: argparse.Namespace) -> dict[str, object]:
-    return {
+    inputs: dict[str, object] = {
         "healthUrl": args.health_url,
         "homepageUrl": homepage_url(args.health_url),
         "verifyEndpoint": verify_endpoint(args.health_url),
@@ -1277,6 +1446,10 @@ def evidence_inputs(args: argparse.Namespace) -> dict[str, object]:
         "branch": args.branch,
         "showHnDraft": args.show_hn_draft,
     }
+    launch_kit = getattr(args, "launch_kit", None)
+    if launch_kit:
+        inputs["launchKit"] = launch_kit
+    return inputs
 
 
 def result_evidence(result: CheckResult) -> dict[str, object]:
@@ -1323,6 +1496,9 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
         check_launch_targets(args),
         check_dns_fixture(args.dns_fixture, args.domain, args.file_or_hash),
     ]
+    launch_kit = getattr(args, "launch_kit", None)
+    if launch_kit:
+        preflight.append(check_launch_kit(launch_kit, args))
     if any(not result.ok for result in preflight):
         return preflight
 
@@ -1393,6 +1569,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--show-hn-draft", default=str(DEFAULT_DRAFT_PATH), help="Show HN draft path"
+    )
+    parser.add_argument(
+        "--launch-kit",
+        help="optional launch-kit directory whose summary, artifacts, and checksums must match the readiness inputs",
     )
     parser.add_argument(
         "--evidence-out",

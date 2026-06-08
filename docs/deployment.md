@@ -85,7 +85,7 @@ The launch kit is a public deployment bundle. It writes:
 - `launch-summary.json` - the launch domain, site URL, content hash, receipt hash, signer key id, artifact names, and SHA-256 hashes for the public handoff artifacts.
 - `runbook.md` - the concrete DNS, verifier, status, warm-cache, live-check, and HN readiness steps for this kit.
 - `checksums.txt` - SHA-256 hashes for `dns-fixture.json`, `dns-zone.txt`, `web.env`, `status-records.json`, `hn-readiness.ps1`, and `runbook.md`. It intentionally excludes `launch-summary.json` and itself to avoid self-referential checksum churn.
-- `hn-readiness.ps1` - a PowerShell wrapper for the final `scripts/hn_readiness.py --evidence-out ...` audit. The wrapper locates the GroundLock repo root from either the current directory or the launch-kit directory before running the Python audit.
+- `hn-readiness.ps1` - a PowerShell wrapper for the final `scripts/hn_readiness.py --launch-kit ... --evidence-out ...` audit. The wrapper locates the GroundLock repo root from either the current directory or the launch-kit directory before running the Python audit.
 
 `launch-kit` reconstructs the receipt from the fixture chunks, checks the payload hash, receipt hash, signer domain, key id, active key/claim status records, and refuses to generate the bundle unless the receipt verdict is PASS. It does not mutate DNS, deploy the verifier, or store private signing keys.
 
@@ -202,14 +202,16 @@ Use HTTP `404` for missing status records. Use `revoked`, `retracted`, or `compr
 After the public verifier, DNS records, resolver cache warming, status endpoints, and CI are in place, run:
 
 ```powershell
-python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\dns-fixture.json --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --evidence-out .\published\hn-readiness-evidence.json
+python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\launch-kit\dns-fixture.json --launch-kit .\published\launch-kit --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --evidence-out .\published\launch-kit\hn-readiness-evidence.json
 ```
 
 `--health-url` must be the deployed verifier root URL or its exact `/api/health` URL. Nested app paths are rejected so the audit does not probe `<path>/api/health` or compare homepage metadata against the wrong launch URL.
 
 `--dns-fixture` must be the fixture generated for the same launch domain and the same `--file-or-hash` demo input. The audit checks the fixture JSON before external requests and requires matching `domain`, a valid unambiguous identity TXT whose `kid` matches the manifest key, a valid unambiguous manifest TXT for the demo hash whose signer domain matches the launch domain, every valid unambiguous chunk TXT declared by the manifest `n=<count>`, reconstructed chunk payload that matches manifest `ph`, cached receipt JSON whose signer, candidate content hash, and body hash match the manifest, and valid active `groundlock-status/v1` key/claim status entries whose subjects match the manifest key and receipt hash.
 
-`--evidence-out` is optional but recommended for launch. It writes a versioned JSON report containing the public launch inputs, current git head, security-header contract hash, and every PASS/FAIL check result. If the evidence file cannot be written, the audit exits non-zero.
+`--launch-kit` is optional for ad hoc checks and recommended for launch. When present, the audit verifies `launch-summary.json`, recomputes the public artifact hashes, compares `checksums.txt`, checks that the copied `dns-fixture.json` matches `--dns-fixture`, and scans the public handoff artifacts for private-key markers before making network calls.
+
+`--evidence-out` is optional but recommended for launch. It writes a versioned JSON report containing the public launch inputs, optional launch-kit path, current git head, security-header contract hash, and every PASS/FAIL check result. If the evidence file cannot be written, the audit exits non-zero.
 
 The audit exits non-zero if:
 
@@ -217,6 +219,7 @@ The audit exits non-zero if:
 - `docs/show-hn-draft.md` still contains `LOCAL_DEMO_ONLY`
 - the launch URLs are not public HTTPS URLs, include credentials/query/fragment suffixes, contain malformed DNS labels, use a nested health URL path, or the signer domain is still a placeholder/local host or IP address
 - the local `dns-fixture.json` is missing, malformed, for a different domain, for a different demo hash, lacks identity, manifest, declared chunk, key status, or claim status entries, has malformed or ambiguous identity/manifest/chunk TXT records, has chunk payload that does not match manifest `ph`, has cached receipt JSON that is malformed or does not match the manifest/demo hash, has malformed status records, has a manifest signer domain that does not match the launch domain, has an identity `kid` that does not match the manifest key, or has status records that do not match the manifest key/receipt hash
+- `--launch-kit` is provided and the launch kit is missing, has mismatched summary fields, has artifact hashes that do not match the files, has a checksum manifest that does not match `launch-summary.json`, has a copied fixture that differs from `--dns-fixture`, or contains private-key markers in public handoff artifacts
 - the latest GitHub Actions `CI` run on `main` is not successful for the current git `HEAD`
 - the deployed `/api/health` response is missing, not `ok`, still in demo mode, missing signer domain, site URL, DoH endpoint, or status base URL configuration, or missing bundled status records when the status base URL shares the verifier origin
 - the deployed homepage title, canonical URL, Open Graph URL, or share image metadata still points at localhost, a placeholder, or a different launch origin
@@ -244,5 +247,5 @@ The audit exits non-zero if:
 - `groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` returns PASS through the configured resolver path.
 - `groundlock check-live <file|hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>` returns PASS from the configured resolver path.
 - The deployed `POST /api/verify` endpoint returns PASS for the same public demo file or hash, with `receiptSummary.signerDomain` matching the launch domain, `receiptSummary.contentHash` matching the demo hash, and `receiptSummary.receiptHash` matching the DNS fixture manifest receipt hash.
-- `scripts/hn_readiness.py --evidence-out <path>` writes a JSON evidence report whose `ok` field is `true`.
+- `scripts/hn_readiness.py --launch-kit <dir> --evidence-out <path>` writes a JSON evidence report whose `ok` field is `true`.
 - `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, and `npm audit --json` pass.

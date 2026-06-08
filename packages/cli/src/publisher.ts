@@ -758,6 +758,7 @@ function hnReadinessPowerShell(opts: {
     `  --repo "${escapePs(opts.repo)}" \``,
     `  --branch "${escapePs(opts.branch)}" \``,
     `  --show-hn-draft "${escapePs(opts.showHnDraft)}" \``,
+    "  --launch-kit $KitDir `",
     '  --evidence-out (Join-Path $KitDir "hn-readiness-evidence.json")',
     "} finally {",
     "  Pop-Location",

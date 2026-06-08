@@ -162,6 +162,58 @@ def production_security_headers(
     return headers
 
 
+def write_launch_kit(
+    root: Path,
+    *,
+    domain: str = "receipts.groundlock.dev",
+    site_url: str = "https://receipts.groundlock.dev",
+    status_base_url: str = "https://receipts.groundlock.dev/groundlock/status",
+    doh_endpoint: str = "https://resolver.groundlock.dev/dns-query",
+    content_hash: str = "sha256:abc123",
+) -> Path:
+    kit = root / "launch-kit"
+    kit.mkdir()
+    artifact_contents = {
+        "dnsFixture": "{}\n",
+        "dnsZone": '_truename.receipts.groundlock.dev. 300 IN TXT "glt1"\n',
+        "webEnv": "NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev\n",
+        "statusRecords": "[]\n",
+        "hnReadiness": ".\\hn-readiness.ps1\n",
+        "runbook": "groundlock warm-cache .\\dns-fixture.json\n",
+    }
+    for key, text in artifact_contents.items():
+        (kit / hn_readiness.LAUNCH_KIT_ARTIFACTS[key]).write_text(
+            text, encoding="utf-8"
+        )
+    artifact_sha256 = {
+        key: hn_readiness.file_sha256(kit / hn_readiness.LAUNCH_KIT_ARTIFACTS[key])
+        for key in hn_readiness.LAUNCH_KIT_CHECKSUMMED_ARTIFACTS
+    }
+    summary = {
+        "schema": "groundlock-launch-kit/v1",
+        "domain": domain,
+        "siteUrl": site_url,
+        "healthUrl": site_url,
+        "statusBaseUrl": status_base_url,
+        "dohEndpoint": doh_endpoint,
+        "fileOrHash": content_hash,
+        "contentHash": content_hash,
+        "receiptHash": "sha256:receipt",
+        "receiptVerdict": "pass",
+        "artifacts": hn_readiness.LAUNCH_KIT_ARTIFACTS,
+        "artifactSha256": artifact_sha256,
+    }
+    (kit / "launch-summary.json").write_text(
+        json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    checksums = "".join(
+        f"{artifact_sha256[key]}  {artifact_name}\n"
+        for key, artifact_name in hn_readiness.LAUNCH_KIT_CHECKSUMMED_ARTIFACTS.items()
+    )
+    (kit / "checksums.txt").write_text(checksums, encoding="utf-8")
+    return kit
+
+
 class HnReadinessTests(unittest.TestCase):
     def test_show_hn_draft_fails_while_marked_local_demo_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1273,6 +1325,65 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("GroundLock Receipts", result.detail)
 
+    def test_launch_kit_check_accepts_matching_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev/api/health",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.name, "launch-kit")
+        self.assertIn("checksum manifest", result.detail)
+
+    def test_launch_kit_check_fails_when_artifact_is_tampered(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            (kit / "runbook.md").write_text("changed\n", encoding="utf-8")
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn("artifactSha256.runbook does not match runbook.md", result.detail)
+        self.assertIn("checksums.txt digest does not match runbook.md", result.detail)
+
+    def test_launch_kit_check_fails_when_fixture_copy_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            other_fixture = Path(tmp) / "dns-fixture.json"
+            other_fixture.write_text('{"domain":"other"}\n', encoding="utf-8")
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(other_fixture),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            "launch kit dns-fixture.json does not match readiness fixture",
+            result.detail,
+        )
+
     def test_run_checks_stops_before_external_checks_when_preflight_fails(self) -> None:
         args = SimpleNamespace(
             health_url="http://localhost:3000",
@@ -1339,6 +1450,45 @@ class HnReadinessTests(unittest.TestCase):
         self.assertEqual(results[-1].name, "dns-fixture")
         self.assertFalse(results[-1].ok)
 
+    def test_run_checks_stops_before_external_checks_when_launch_kit_fails(
+        self,
+    ) -> None:
+        args = SimpleNamespace(
+            health_url="https://receipts.groundlock.dev",
+            status_base_url="https://receipts.groundlock.dev/groundlock/status",
+            doh_endpoint="https://resolver.groundlock.dev/dns-query",
+            domain="receipts.groundlock.dev",
+            show_hn_draft="ignored.md",
+            repo="ucsandman/groundlock-receipts",
+            branch="main",
+            dns_fixture="published/launch-kit/dns-fixture.json",
+            launch_kit="published/launch-kit",
+            file_or_hash="sha256:abc123",
+        )
+
+        ok = hn_readiness.CheckResult("mock", True, "ok")
+        launch_kit_fail = hn_readiness.CheckResult(
+            "launch-kit", False, "checksum mismatch"
+        )
+        with (
+            mock.patch.object(hn_readiness, "check_git_clean", return_value=ok),
+            mock.patch.object(hn_readiness, "check_show_hn_draft", return_value=ok),
+            mock.patch.object(hn_readiness, "check_dns_fixture", return_value=ok),
+            mock.patch.object(
+                hn_readiness, "check_launch_kit", return_value=launch_kit_fail
+            ) as check_launch_kit,
+            mock.patch.object(
+                hn_readiness,
+                "check_ci",
+                side_effect=AssertionError("external checks should not run"),
+            ),
+        ):
+            results = hn_readiness.run_checks(args)
+
+        self.assertEqual(results[-1].name, "launch-kit")
+        self.assertFalse(results[-1].ok)
+        check_launch_kit.assert_called_once_with("published/launch-kit", args)
+
     def test_run_checks_includes_deployed_web_verify_after_preflight(self) -> None:
         args = SimpleNamespace(
             health_url="https://receipts.groundlock.dev",
@@ -1349,6 +1499,7 @@ class HnReadinessTests(unittest.TestCase):
             repo="ucsandman/groundlock-receipts",
             branch="main",
             dns_fixture="published/dns-fixture.json",
+            launch_kit="published/launch-kit",
             file_or_hash="sha256:abc123",
         )
 
@@ -1365,6 +1516,7 @@ class HnReadinessTests(unittest.TestCase):
             mock.patch.object(hn_readiness, "check_git_clean", return_value=ok),
             mock.patch.object(hn_readiness, "check_show_hn_draft", return_value=ok),
             mock.patch.object(hn_readiness, "check_dns_fixture", return_value=ok),
+            mock.patch.object(hn_readiness, "check_launch_kit", return_value=ok),
             mock.patch.object(
                 hn_readiness,
                 "fixture_manifest_for_input",
@@ -1406,6 +1558,7 @@ class HnReadinessTests(unittest.TestCase):
             repo="ucsandman/groundlock-receipts",
             branch="main",
             dns_fixture="published/dns-fixture.json",
+            launch_kit="published/launch-kit",
             file_or_hash="sha256:abc123",
         )
         results = [
@@ -1433,6 +1586,7 @@ class HnReadinessTests(unittest.TestCase):
                 "repo": "ucsandman/groundlock-receipts",
                 "branch": "main",
                 "showHnDraft": "docs/show-hn-draft.md",
+                "launchKit": "published/launch-kit",
             },
         )
         self.assertEqual(report["checks"][0]["name"], "git")

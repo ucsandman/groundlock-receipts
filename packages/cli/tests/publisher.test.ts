@@ -197,6 +197,7 @@ describe("publisher SDK", () => {
     expect(hnReadiness).toContain("Push-Location $RepoRoot");
     expect(hnReadiness).toContain("could_not_find_groundlock_repo_root");
     expect(hnReadiness).toContain("scripts\\hn_readiness.py");
+    expect(hnReadiness).toContain("--launch-kit $KitDir");
     expect(hnReadiness).toContain("--evidence-out");
     expect(runbook).toContain("# GroundLock launch runbook");
     expect(runbook).toContain("groundlock warm-cache .\\dns-fixture.json");
