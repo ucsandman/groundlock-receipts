@@ -7,6 +7,7 @@ import argparse
 import html.parser
 import json
 import ipaddress
+import re
 import shutil
 import subprocess
 import sys
@@ -37,6 +38,7 @@ RESERVED_SUFFIXES = (
 )
 OG_IMAGE_PATH = "/groundlock-receipt-desk.png"
 SITE_TITLE = "GroundLock Receipts"
+DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
 @dataclass(frozen=True)
@@ -189,7 +191,7 @@ def check_launch_targets(args: argparse.Namespace) -> CheckResult:
         failures.extend(validate_public_https_url("doh-endpoint", args.doh_endpoint))
     else:
         failures.append("doh-endpoint is required for HN launch")
-    failures.extend(validate_public_domain("domain", args.domain))
+    failures.extend(validate_public_domain("domain", args.domain, allow_ip=False))
 
     if failures:
         return CheckResult("launch-targets", False, "; ".join(failures))
@@ -203,6 +205,10 @@ def validate_public_https_url(label: str, value: str) -> list[str]:
     failures = []
     if parsed.scheme != "https":
         failures.append(f"{label} must use https")
+    if parsed.username or parsed.password:
+        failures.append(f"{label} must not include username or password")
+    if parsed.query or parsed.fragment:
+        failures.append(f"{label} must not include query or fragment")
     if not parsed.hostname:
         failures.append(f"{label} must include a hostname")
         return failures
@@ -210,7 +216,9 @@ def validate_public_https_url(label: str, value: str) -> list[str]:
     return failures
 
 
-def validate_public_domain(label: str, value: str) -> list[str]:
+def validate_public_domain(
+    label: str, value: str, *, allow_ip: bool = True
+) -> list[str]:
     host = value.strip().rstrip(".").lower()
     if not host:
         return [f"{label} is empty"]
@@ -223,7 +231,14 @@ def validate_public_domain(label: str, value: str) -> list[str]:
     except ValueError:
         if "." not in host:
             return [f"{label} must be a public DNS name"]
+        invalid_dns = len(host) > 253 or any(
+            not DNS_LABEL_RE.match(part) for part in host.split(".")
+        )
+        if invalid_dns:
+            return [f"{label} must be a valid public DNS name"]
         return []
+    if not allow_ip:
+        return [f"{label} must be a DNS name, not an IP address: {value}"]
     if not ip.is_global:
         return [f"{label} must not use a private or local IP address: {value}"]
     return []

@@ -174,7 +174,7 @@ The audit exits non-zero if:
 
 - the git worktree is dirty
 - `docs/show-hn-draft.md` still contains `LOCAL_DEMO_ONLY`
-- the launch URLs are not public HTTPS URLs or the signer domain is still a placeholder/local host
+- the launch URLs are not public HTTPS URLs, include credentials/query/fragment suffixes, contain malformed DNS labels, or the signer domain is still a placeholder/local host or IP address
 - the latest GitHub Actions `CI` run on `main` is not successful for the current git `HEAD`
 - the deployed `/api/health` response is missing, not `ok`, still in demo mode, missing signer domain, site URL, DoH endpoint, or status base URL configuration, or missing bundled status records when the status base URL shares the verifier origin
 - the deployed homepage title, canonical URL, Open Graph URL, or share image metadata still points at localhost, a placeholder, or a different launch origin
@@ -184,7 +184,7 @@ The audit exits non-zero if:
 ## Release checklist
 
 - Public HTTPS verifier deployed.
-- Launch URLs and signer domain are real public hosts, not `.example`, `localhost`, or private IPs.
+- Launch URLs and signer domain are real public DNS hosts, not `.example`, `localhost`, malformed DNS names, URL credentials, query/fragment variants, or IP addresses.
 - Public homepage renders the `GroundLock Receipts` title and canonical/Open Graph/Twitter image metadata for the same public HTTPS verifier origin.
 - Web env generated with `groundlock export-web-env` and installed in the deployment.
 - `GROUNDLOCK_SIGNER_DOMAIN` points at the publisher domain.

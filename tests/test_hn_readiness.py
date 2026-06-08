@@ -166,6 +166,26 @@ class HnReadinessTests(unittest.TestCase):
         self.assertEqual(result.name, "launch-targets")
         self.assertIn("doh-endpoint", result.detail)
 
+    def test_launch_targets_reject_ambiguous_urls_and_malformed_domains(self) -> None:
+        result = hn_readiness.check_launch_targets(
+            SimpleNamespace(
+                health_url="https://user:pass@bad_label.groundlock.dev/api/health?x=1",
+                status_base_url="https://publisher.groundlock.dev/groundlock/status#fragment",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query?bootstrap=1",
+                domain="8.8.8.8",
+            )
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("health-url must not include username or password", result.detail)
+        self.assertIn("health-url must not include query or fragment", result.detail)
+        self.assertIn("health-url must be a valid public DNS name", result.detail)
+        self.assertIn(
+            "status-base-url must not include query or fragment", result.detail
+        )
+        self.assertIn("doh-endpoint must not include query or fragment", result.detail)
+        self.assertIn("domain must be a DNS name, not an IP address", result.detail)
+
     def test_homepage_url_strips_health_endpoint(self) -> None:
         self.assertEqual(
             hn_readiness.homepage_url(
