@@ -64,9 +64,31 @@ describe("health route", () => {
     expect(JSON.stringify(body)).not.toContain("publisher.example");
   });
 
+  it("fails live mode health when explicit DoH config is missing", async () => {
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
+    delete process.env.GROUNDLOCK_DOH_ENDPOINT;
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.example/groundlock/status";
+
+    const route = await import("../app/api/health/route");
+    const response = await route.GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(body).toEqual(expect.objectContaining({
+      service: "groundlock-web",
+      ok: false,
+      mode: "live",
+      code: "missing_doh_endpoint",
+    }));
+    expect(JSON.stringify(body)).not.toContain("publisher.example");
+  });
+
   it("fails live mode health when bundled same-origin status records are missing", async () => {
     process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev/app";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
     process.env.GROUNDLOCK_STATUS_BASE_URL = "https://receipts.groundlock.dev/groundlock/status";
     delete process.env.GROUNDLOCK_STATUS_RECORDS_JSON;
 
@@ -88,6 +110,7 @@ describe("health route", () => {
   it("allows externally managed status records without bundled status JSON", async () => {
     process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
     process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.example/groundlock/status";
     delete process.env.GROUNDLOCK_STATUS_RECORDS_JSON;
 

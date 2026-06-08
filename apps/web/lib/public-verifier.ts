@@ -62,6 +62,13 @@ export async function verifyPublicContentHash(contentHash: string): Promise<True
         explanation: "GROUNDLOCK_STATUS_BASE_URL is required when GROUNDLOCK_SIGNER_DOMAIN is configured",
       };
     }
+    if (!liveConfig.dohEndpoint) {
+      return {
+        state: "UNVERIFIABLE",
+        code: "doh_resolver_not_configured",
+        explanation: "GROUNDLOCK_DOH_ENDPOINT is required when GROUNDLOCK_SIGNER_DOMAIN is configured",
+      };
+    }
     const fetcher = fetchJson;
     return verifyTrueName(contentHash, liveConfig.signerDomain, {
       ...createDohTxtResolver(fetcher, liveConfig.dohEndpoint),
@@ -159,7 +166,7 @@ function mergeTxt(txt: Record<string, string[]>, records: DnsCacheRecords): void
 
 interface LiveVerifierConfig {
   signerDomain: string;
-  dohEndpoint: string;
+  dohEndpoint: string | null;
   statusBaseUrl: string | null;
 }
 
@@ -173,7 +180,7 @@ function liveVerifierConfigFromEnv(): LiveVerifierConfig | null {
   if (!signerDomain) return null;
   return {
     signerDomain,
-    dohEndpoint: cleanEnv(process.env.GROUNDLOCK_DOH_ENDPOINT) ?? "https://cloudflare-dns.com/dns-query",
+    dohEndpoint: cleanEnv(process.env.GROUNDLOCK_DOH_ENDPOINT),
     statusBaseUrl: cleanEnv(process.env.GROUNDLOCK_STATUS_BASE_URL),
   };
 }

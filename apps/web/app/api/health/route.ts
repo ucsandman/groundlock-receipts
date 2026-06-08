@@ -29,6 +29,19 @@ export function GET() {
     );
   }
 
+  if (mode === "live" && !checks.dohEndpointConfigured) {
+    return jsonNoStore(
+      {
+        service: "groundlock-web",
+        ok: false,
+        mode,
+        code: "missing_doh_endpoint",
+        checks,
+      },
+      { status: 503 },
+    );
+  }
+
   if (mode === "live" && usesBundledStatusEndpoint() && !checks.statusRecordsConfigured) {
     return jsonNoStore(
       {
