@@ -47,7 +47,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - public HTTPS deployment of the web verifier
 - stable publisher signing key managed outside the public verifier
 - configured resolver-cache warming path
-- configured GROUNDLOCK_SIGNER_DOMAIN and GROUNDLOCK_STATUS_BASE_URL
+- configured GROUNDLOCK_SIGNER_DOMAIN, GROUNDLOCK_STATUS_BASE_URL, and public status record source
 - _truename.<domain> TXT identity record
 - gl-<hash>._groundlock.<domain> TXT manifest records
 - c<N>.gl-<hash>._groundlock.<domain> TXT receipt chunk records

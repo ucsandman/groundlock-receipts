@@ -8,6 +8,8 @@ The verifier reconstructs the signed receipt from DNS resolver-cache TXT manifes
 
 If `GROUNDLOCK_SIGNER_DOMAIN` is configured, `/api/verify` uses live DNS-over-HTTPS lookups and HTTP status endpoints. Otherwise it uses local demo fixtures.
 
+The web app also exposes optional public status routes at `/groundlock/status/key` and `/groundlock/status/claim` when `GROUNDLOCK_STATUS_RECORDS_JSON` is configured.
+
 ### Request
 
 Send exactly one of:

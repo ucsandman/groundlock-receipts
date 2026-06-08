@@ -57,6 +57,13 @@ GET <GROUNDLOCK_STATUS_BASE_URL>/key?lookup=key:<signer-domain>:<kid>
 GET <GROUNDLOCK_STATUS_BASE_URL>/claim?lookup=claim:<receipt-hash>
 ```
 
+The bundled web app can serve these endpoints at `/groundlock/status/key` and `/groundlock/status/claim` when `GROUNDLOCK_STATUS_RECORDS_JSON` is configured. For a same-origin deployment, set:
+
+```text
+GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status
+GROUNDLOCK_STATUS_RECORDS_JSON=[...public key and claim status records...]
+```
+
 Return the JSON status record directly:
 
 ```json
