@@ -57,6 +57,7 @@ class FixtureManifest:
     receipt_hash: str
     signer_domain: str
     kid: str
+    chunk_count: int
 
 
 class MetadataExtractor(html.parser.HTMLParser):
@@ -498,15 +499,12 @@ def validate_fixture_txt_records(
             f"fixture cache manifest TXT record for demo hash is missing: {expected_manifest_name}"
         )
 
-    expected_chunk_suffix = f".{expected_manifest_name}"
-    chunk_found = any(
-        name.startswith("c")
-        and name.endswith(expected_chunk_suffix)
-        and any(value.startswith("gdc1 ") for value in values)
-        for name, values in normalized.items()
-    )
-    if not chunk_found:
-        failures.append("fixture cache chunk TXT records for demo hash are missing")
+    if manifest is not None:
+        failures.extend(
+            validate_manifest_chunks(
+                normalized, expected_manifest_name, manifest.chunk_count
+            )
+        )
 
     return failures, manifest
 
@@ -517,8 +515,15 @@ def parse_fixture_manifest(values: list[str]) -> FixtureManifest | None:
             continue
         parts = parse_kv_record(value, "gdm1")
         receipt_hash = parts.get("rh")
+        chunk_count_raw = parts.get("n")
         key = parts.get("key")
-        if not receipt_hash or not key or "#" not in key:
+        if not receipt_hash or not chunk_count_raw or not key or "#" not in key:
+            return None
+        try:
+            chunk_count = int(chunk_count_raw)
+        except ValueError:
+            return None
+        if chunk_count <= 0:
             return None
         signer_domain, kid = key.split("#", 1)
         if not signer_domain or not kid:
@@ -527,8 +532,27 @@ def parse_fixture_manifest(values: list[str]) -> FixtureManifest | None:
             receipt_hash=ensure_sha256(receipt_hash),
             signer_domain=normalize_domain(signer_domain),
             kid=kid,
+            chunk_count=chunk_count,
         )
     return None
+
+
+def validate_manifest_chunks(
+    txt: dict[str, list[str]], manifest_name: str, chunk_count: int
+) -> list[str]:
+    failures = []
+    for index in range(chunk_count):
+        chunk_name = f"c{index}.{manifest_name}"
+        values = txt.get(chunk_name)
+        if not values:
+            failures.append(f"fixture cache chunk TXT record is missing: {chunk_name}")
+            continue
+        expected_prefix = f"gdc1 i={index} "
+        if not any(value.startswith(expected_prefix) for value in values):
+            failures.append(
+                f"fixture cache chunk TXT record has wrong index: {chunk_name}"
+            )
+    return failures
 
 
 def parse_kv_record(value: str, prefix: str) -> dict[str, str]:
