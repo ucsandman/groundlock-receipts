@@ -146,6 +146,30 @@ def chunk_record(parts: dict[str, object], index: int = 0) -> str:
     return f"gdc1 i={index} d={parts['payload']}"
 
 
+def production_security_headers(
+    *, csp: str | None = None, cache_control: str | None = None
+) -> dict[str, str]:
+    headers = {
+        "Content-Security-Policy": csp
+        or (
+            "default-src 'self'; base-uri 'self'; form-action 'self'; "
+            "frame-ancestors 'none'; object-src 'none'; connect-src 'self'; "
+            "upgrade-insecure-requests"
+        ),
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Strict-Transport-Security": "max-age=31536000",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "X-DNS-Prefetch-Control": "off",
+        "X-Permitted-Cross-Domain-Policies": "none",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    }
+    if cache_control is not None:
+        headers["Cache-Control"] = cache_control
+    return headers
+
+
 class HnReadinessTests(unittest.TestCase):
     def test_show_hn_draft_fails_while_marked_local_demo_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -348,6 +372,39 @@ class HnReadinessTests(unittest.TestCase):
         )
         self.assertIn("doh-endpoint must not include query or fragment", result.detail)
         self.assertIn("domain must be a DNS name, not an IP address", result.detail)
+
+    def test_response_headers_require_production_security_headers(self) -> None:
+        ok = hn_readiness.validate_response_headers(
+            production_security_headers(), "homepage"
+        )
+        missing = hn_readiness.validate_response_headers({}, "homepage")
+        dev_csp = hn_readiness.validate_response_headers(
+            production_security_headers(
+                csp=(
+                    "default-src 'self'; base-uri 'self'; form-action 'self'; "
+                    "frame-ancestors 'none'; object-src 'none'; connect-src 'self'; "
+                    "script-src 'self' 'unsafe-eval'; upgrade-insecure-requests"
+                )
+            ),
+            "homepage",
+        )
+
+        self.assertEqual(ok, [])
+        self.assertTrue(any("Content-Security-Policy" in item for item in missing))
+        self.assertIn("'unsafe-eval'", "; ".join(dev_csp))
+
+    def test_response_headers_require_no_store_for_api_responses(self) -> None:
+        ok = hn_readiness.validate_response_headers(
+            production_security_headers(cache_control="no-store"),
+            "health",
+            require_no_store=True,
+        )
+        missing = hn_readiness.validate_response_headers(
+            production_security_headers(), "health", require_no_store=True
+        )
+
+        self.assertEqual(ok, [])
+        self.assertIn("Cache-Control: no-store", "; ".join(missing))
 
     def test_homepage_url_strips_health_endpoint(self) -> None:
         self.assertEqual(
@@ -1313,6 +1370,9 @@ class HnReadinessTests(unittest.TestCase):
             mock.patch.object(hn_readiness, "check_ci", return_value=ok),
             mock.patch.object(hn_readiness, "check_health_url", return_value=ok),
             mock.patch.object(hn_readiness, "check_homepage_metadata", return_value=ok),
+            mock.patch.object(
+                hn_readiness, "check_security_headers", return_value=ok
+            ) as check_security_headers,
             mock.patch.object(hn_readiness, "check_warm_cache", return_value=ok),
             mock.patch.object(hn_readiness, "check_live_receipt", return_value=ok),
             mock.patch.object(
@@ -1323,6 +1383,9 @@ class HnReadinessTests(unittest.TestCase):
 
         self.assertIn("web-verify", [result.name for result in results])
         self.assertEqual(results[-1].name, "web-verify")
+        check_security_headers.assert_called_once_with(
+            "https://receipts.groundlock.dev"
+        )
         check_web_verify.assert_called_once_with(
             "https://receipts.groundlock.dev",
             "sha256:abc123",

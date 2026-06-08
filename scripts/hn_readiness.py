@@ -45,6 +45,31 @@ DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 CHUNK_DATA_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 MAX_WEB_VERIFY_BYTES = 256 * 1024
 STATUS_VALUES = {"active", "revoked", "retracted", "compromised"}
+SECURITY_HEADER_REQUIREMENTS = {
+    "Content-Security-Policy": [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+        "object-src 'none'",
+        "connect-src 'self'",
+        "upgrade-insecure-requests",
+    ],
+    "X-Content-Type-Options": ["nosniff"],
+    "X-Frame-Options": ["DENY"],
+    "Referrer-Policy": ["strict-origin-when-cross-origin"],
+    "Strict-Transport-Security": ["max-age=31536000"],
+    "Cross-Origin-Opener-Policy": ["same-origin"],
+    "X-DNS-Prefetch-Control": ["off"],
+    "X-Permitted-Cross-Domain-Policies": ["none"],
+    "Permissions-Policy": [
+        "camera=()",
+        "microphone=()",
+        "geolocation=()",
+        "payment=()",
+    ],
+}
+FORBIDDEN_CSP_VALUES = ["'unsafe-eval'", "localhost", "127.0.0.1"]
 
 
 @dataclass(frozen=True)
@@ -283,6 +308,11 @@ def check_health_url(
                 return CheckResult(
                     "health", False, f"{endpoint} returned HTTP {response.status}"
                 )
+            header_failures = validate_response_headers(
+                response.headers, "health", require_no_store=True
+            )
+            if header_failures:
+                return CheckResult("health", False, "; ".join(header_failures))
     except Exception as exc:
         return CheckResult("health", False, f"{endpoint} failed: {exc}")
 
@@ -357,6 +387,76 @@ def check_homepage_metadata(url: str, timeout: float = 10.0) -> CheckResult:
         return CheckResult("metadata", False, f"{endpoint} failed: {exc}")
 
     return validate_homepage_metadata(body, endpoint)
+
+
+def header_value(headers: object, name: str) -> str | None:
+    if hasattr(headers, "get"):
+        value = headers.get(name)  # type: ignore[attr-defined]
+        if value is not None:
+            return str(value)
+    if isinstance(headers, dict):
+        for key, value in headers.items():
+            if isinstance(key, str) and key.lower() == name.lower():
+                return str(value)
+    return None
+
+
+def validate_response_headers(
+    headers: object, label: str, *, require_no_store: bool = False
+) -> list[str]:
+    failures = []
+    for header_name, expected_values in SECURITY_HEADER_REQUIREMENTS.items():
+        value = header_value(headers, header_name)
+        if value is None:
+            failures.append(f"{label} missing {header_name}")
+            continue
+        for expected in expected_values:
+            if expected not in value:
+                failures.append(f"{label} {header_name} missing {expected}")
+
+    csp = header_value(headers, "Content-Security-Policy") or ""
+    for forbidden in FORBIDDEN_CSP_VALUES:
+        if forbidden in csp:
+            failures.append(f"{label} Content-Security-Policy contains {forbidden}")
+
+    if require_no_store:
+        cache_control = header_value(headers, "Cache-Control") or ""
+        if "no-store" not in cache_control.lower():
+            failures.append(f"{label} missing Cache-Control: no-store")
+
+    return failures
+
+
+def check_security_headers(url: str, timeout: float = 10.0) -> CheckResult:
+    failures = []
+    endpoints = [
+        ("homepage", homepage_url(url), False),
+        ("health", health_endpoint(url), True),
+    ]
+    for label, endpoint, require_no_store in endpoints:
+        request = urllib.request.Request(
+            endpoint, headers={"User-Agent": "groundlock-hn-readiness/1"}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                if response.status != 200:
+                    failures.append(f"{label} returned HTTP {response.status}")
+                    continue
+                failures.extend(
+                    validate_response_headers(
+                        response.headers, label, require_no_store=require_no_store
+                    )
+                )
+        except Exception as exc:
+            failures.append(f"{endpoint} failed: {exc}")
+
+    if failures:
+        return CheckResult("security-headers", False, "; ".join(failures))
+    return CheckResult(
+        "security-headers",
+        True,
+        "deployed homepage and health security headers are production-ready",
+    )
 
 
 def build_web_verify_body(file_or_hash: str) -> dict[str, str]:
@@ -449,6 +549,11 @@ def check_web_verify(
                 return CheckResult(
                     "web-verify", False, f"{endpoint} returned HTTP {response.status}"
                 )
+            header_failures = validate_response_headers(
+                response.headers, "verify", require_no_store=True
+            )
+            if header_failures:
+                return CheckResult("web-verify", False, "; ".join(header_failures))
     except Exception as exc:
         return CheckResult("web-verify", False, f"{endpoint} failed: {exc}")
 
@@ -1173,6 +1278,7 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
         check_ci(args.repo, args.branch),
         check_health_url(args.health_url, args.status_base_url),
         check_homepage_metadata(args.health_url),
+        check_security_headers(args.health_url),
         check_warm_cache(args.dns_fixture, args.doh_endpoint),
         check_live_receipt(
             args.file_or_hash, args.domain, args.status_base_url, args.doh_endpoint

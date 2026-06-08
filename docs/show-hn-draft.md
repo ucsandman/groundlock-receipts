@@ -54,6 +54,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - configured GROUNDLOCK_SIGNER_DOMAIN, GROUNDLOCK_STATUS_BASE_URL, and valid public key/claim status record source
 - deployed `/api/health` returning 200, including bundled status record readiness for same-origin status deployments
 - public homepage title, canonical URL, and share metadata matching the deployed public verifier origin
+- deployed homepage, health, and verify responses with production security headers; health and verify responses with `Cache-Control: no-store`
 - container build and healthcheck evidence, if deploying by container
 - _truename.<domain> TXT identity record
 - gl-<hash>._groundlock.<domain> TXT manifest records

@@ -71,7 +71,7 @@ In demo mode it returns `200`. In live mode it returns `503` when `GROUNDLOCK_SI
 
 If `GROUNDLOCK_STATUS_BASE_URL` points at the same origin as `NEXT_PUBLIC_SITE_URL`, health also requires `GROUNDLOCK_STATUS_RECORDS_JSON` to parse, contain only valid status records, and include at least one usable key record and one usable claim record; that means the deployment is using the bundled `/groundlock/status/key` and `/groundlock/status/claim` routes. Externally managed status endpoints are allowed without bundled status JSON, but `groundlock check-live` must still pass before launch.
 
-This is a deployment configuration check only. It does not prove resolver caches are warmed or that a receipt can verify; use `groundlock check-live` and the deployed `/api/verify` launch audit for that release gate. Health, verify, and status JSON responses use `Cache-Control: no-store` so stale verifier state is not cached by default.
+This is a deployment configuration check only. It does not prove resolver caches are warmed or that a receipt can verify; use `groundlock check-live` and the deployed `/api/verify` launch audit for that release gate. Health, verify, and status JSON responses use `Cache-Control: no-store` so stale verifier state is not cached by default. The readiness audit also requires production browser hardening headers on deployed homepage and health responses so a platform or proxy cannot silently strip them before launch.
 
 ## DNS TXT records
 
@@ -190,9 +190,10 @@ The audit exits non-zero if:
 - the latest GitHub Actions `CI` run on `main` is not successful for the current git `HEAD`
 - the deployed `/api/health` response is missing, not `ok`, still in demo mode, missing signer domain, site URL, DoH endpoint, or status base URL configuration, or missing bundled status records when the status base URL shares the verifier origin
 - the deployed homepage title, canonical URL, Open Graph URL, or share image metadata still points at localhost, a placeholder, or a different launch origin
+- the deployed homepage or health response is missing production security headers, the health response is missing `Cache-Control: no-store`, or a development CSP allowance such as `localhost` or `unsafe-eval` is present
 - `groundlock warm-cache` does not return `PASS` for the public demo fixture
 - `groundlock check-live` does not return `PASS` for the public demo receipt
-- the deployed `POST /api/verify` endpoint does not return `PASS` for the public demo receipt or hash, or its `receiptSummary` does not match the launch domain, demo content hash, and DNS fixture receipt hash
+- the deployed `POST /api/verify` endpoint does not return `PASS` for the public demo receipt or hash, is missing production security headers or `Cache-Control: no-store`, or its `receiptSummary` does not match the launch domain, demo content hash, and DNS fixture receipt hash
 
 ## Release checklist
 
@@ -205,6 +206,7 @@ The audit exits non-zero if:
 - `GROUNDLOCK_DOH_ENDPOINT` points at the same explicit resolver URL used for `warm-cache`, `check-live`, and `hn_readiness.py`.
 - `GROUNDLOCK_STATUS_BASE_URL` serves key and claim status JSON. If it shares the verifier origin, bundled status records are configured and valid.
 - `GET /api/health` returns `200` on the deployed verifier and reports `signerDomainConfigured`, `siteUrlConfigured`, `dohEndpointConfigured`, and `statusBaseUrlConfigured`; same-origin status deployments also report `statusRecordsConfigured`.
+- Deployed homepage, health, and verify responses include production security headers; health and verify responses include `Cache-Control: no-store`.
 - Container image builds and its Docker healthcheck passes, if deploying by container.
 - DNS TXT identity, manifest, and chunk records are published.
 - Zone-file TXT export from `groundlock setup-domain --format zone --ttl <seconds>` has been installed or translated into equivalent provider TXT records.
