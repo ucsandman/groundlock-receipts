@@ -735,6 +735,13 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
         if summary.get("signerKeyId") != fixture_manifest.kid:
             failures.append("launch summary signerKeyId does not match DNS fixture")
 
+    fixture_status_records = fixture_status_records_for_launch_kit(args.dns_fixture)
+    if isinstance(fixture_status_records, str):
+        failures.append(fixture_status_records)
+        fixture_status_records = None
+    elif summary.get("statusRecordCount") != len(fixture_status_records):
+        failures.append("launch summary statusRecordCount does not match DNS fixture")
+
     artifacts = summary.get("artifacts")
     if not isinstance(artifacts, dict):
         failures.append("launch summary artifacts is missing")
@@ -800,13 +807,59 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
     except OSError as exc:
         failures.append(f"could not compare readiness fixture with launch kit: {exc}")
 
+    if fixture_status_records is not None:
+        status_records_result = validate_launch_kit_status_records(
+            root / LAUNCH_KIT_ARTIFACTS["statusRecords"], fixture_status_records
+        )
+        if status_records_result:
+            failures.append(status_records_result)
+
     if failures:
         return CheckResult("launch-kit", False, "; ".join(failures))
     return CheckResult(
         "launch-kit",
         True,
-        "launch summary, fixture receipt metadata, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
+        "launch summary, fixture receipt metadata, status records, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
     )
+
+
+def fixture_status_records_for_launch_kit(
+    dns_fixture: str,
+) -> list[dict[str, object]] | str:
+    try:
+        fixture = json.loads(Path(dns_fixture).read_text(encoding="utf-8"))
+    except OSError as exc:
+        return f"could not read DNS fixture status records for launch kit: {exc}"
+    except json.JSONDecodeError as exc:
+        return f"could not parse DNS fixture status records for launch kit: {exc}"
+    if not isinstance(fixture, dict):
+        return "DNS fixture is not an object while checking launch kit status records"
+    status = fixture.get("status")
+    if not isinstance(status, dict):
+        return "DNS fixture status records are missing while checking launch kit"
+    key = status.get("key")
+    claim = status.get("claim")
+    if not isinstance(key, dict) or not isinstance(claim, dict):
+        return "DNS fixture key or claim status record is missing while checking launch kit"
+    return [key, claim]
+
+
+def validate_launch_kit_status_records(
+    path: Path, fixture_status_records: list[dict[str, object]]
+) -> str | None:
+    try:
+        records = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return f"could not read {path}: {exc}"
+    except json.JSONDecodeError as exc:
+        return f"invalid status-records.json: {exc}"
+    if not isinstance(records, list):
+        return "status-records.json is not a JSON array"
+    if not all(isinstance(record, dict) for record in records):
+        return "status-records.json must contain only JSON objects"
+    if canonical_json(records) != canonical_json(fixture_status_records):
+        return "status-records.json does not match DNS fixture status records"
+    return None
 
 
 def validate_fixture_txt_records(

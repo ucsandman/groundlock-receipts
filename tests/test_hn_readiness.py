@@ -178,6 +178,7 @@ def write_launch_kit(
         content_hash=content_hash, signer_domain=domain, kid=kid
     )
     manifest_label = hn_readiness.cache_label(content_hash)
+    status = active_status_for_parts(parts, signer_domain=domain, kid=kid)
     fixture = {
         "domain": domain,
         "txt": {
@@ -187,13 +188,14 @@ def write_launch_kit(
             ],
             f"c0.gl-{manifest_label}._groundlock.{domain}": [chunk_record(parts)],
         },
-        "status": active_status_for_parts(parts, signer_domain=domain, kid=kid),
+        "status": status,
     }
+    status_records = [status["key"], status["claim"]]
     artifact_contents = {
         "dnsFixture": json.dumps(fixture, indent=2, sort_keys=True) + "\n",
         "dnsZone": '_truename.receipts.groundlock.dev. 300 IN TXT "glt1"\n',
         "webEnv": "NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev\n",
-        "statusRecords": "[]\n",
+        "statusRecords": json.dumps(status_records, indent=2, sort_keys=True) + "\n",
         "hnReadiness": ".\\hn-readiness.ps1\n",
         "runbook": "groundlock warm-cache .\\dns-fixture.json\n",
     }
@@ -217,6 +219,7 @@ def write_launch_kit(
         "receiptHash": str(parts["receipt_hash"]),
         "signerKeyId": kid,
         "receiptVerdict": "pass",
+        "statusRecordCount": 2,
         "artifacts": hn_readiness.LAUNCH_KIT_ARTIFACTS,
         "artifactSha256": artifact_sha256,
     }
@@ -229,6 +232,24 @@ def write_launch_kit(
     )
     (kit / "checksums.txt").write_text(checksums, encoding="utf-8")
     return kit
+
+
+def refresh_launch_kit_hashes(kit: Path) -> None:
+    summary_path = kit / "launch-summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    artifact_sha256 = {
+        key: hn_readiness.file_sha256(kit / hn_readiness.LAUNCH_KIT_ARTIFACTS[key])
+        for key in hn_readiness.LAUNCH_KIT_CHECKSUMMED_ARTIFACTS
+    }
+    summary["artifactSha256"] = artifact_sha256
+    summary_path.write_text(
+        json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    checksums = "".join(
+        f"{artifact_sha256[key]}  {artifact_name}\n"
+        for key, artifact_name in hn_readiness.LAUNCH_KIT_CHECKSUMMED_ARTIFACTS.items()
+    )
+    (kit / "checksums.txt").write_text(checksums, encoding="utf-8")
 
 
 class HnReadinessTests(unittest.TestCase):
@@ -1406,6 +1427,36 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("receiptHash does not match DNS fixture", result.detail)
         self.assertIn("signerKeyId does not match DNS fixture", result.detail)
+
+    def test_launch_kit_check_fails_when_status_records_differ_from_fixture(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            status_records_path = kit / "status-records.json"
+            records = json.loads(status_records_path.read_text(encoding="utf-8"))
+            records[1]["status"] = "retracted"
+            status_records_path.write_text(
+                json.dumps(records, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            refresh_launch_kit_hashes(kit)
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            "status-records.json does not match DNS fixture status records",
+            result.detail,
+        )
 
     def test_launch_kit_check_fails_when_fixture_copy_differs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
