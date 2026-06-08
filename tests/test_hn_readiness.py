@@ -284,7 +284,7 @@ class HnReadinessTests(unittest.TestCase):
             )
 
             result = hn_readiness.check_dns_fixture(
-                str(fixture), "receipts.groundlock.dev"
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
             )
 
         self.assertTrue(result.ok)
@@ -312,12 +312,95 @@ class HnReadinessTests(unittest.TestCase):
             )
 
             result = hn_readiness.check_dns_fixture(
-                str(fixture), "receipts.groundlock.dev"
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
             )
 
         self.assertFalse(result.ok)
         self.assertIn("domain", result.detail)
         self.assertIn("claim", result.detail)
+
+    def test_dns_fixture_preflight_rejects_fixture_for_different_demo_hash(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "receipts.groundlock.dev",
+                        "txt": {
+                            "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
+                            "gl-other._groundlock.receipts.groundlock.dev": [
+                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                            ],
+                            "c0.gl-other._groundlock.receipts.groundlock.dev": [
+                                "gdc1 i=0 d=abc"
+                            ],
+                        },
+                        "status": {
+                            "key": {
+                                "version": "groundlock-status/v1",
+                                "kind": "key",
+                            },
+                            "claim": {
+                                "version": "groundlock-status/v1",
+                                "kind": "claim",
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("demo hash", result.detail)
+
+    def test_dns_fixture_preflight_hashes_file_input_with_groundlock_canonicalization(
+        self,
+    ) -> None:
+        content_hash = hn_readiness.digest_text("Pay Jane Roe $2,000.00.")
+        manifest_label = hn_readiness.cache_label(content_hash)
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "notice.txt"
+            sample.write_text("Pay Jane Roe $2,000.00.", encoding="utf-8")
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "receipts.groundlock.dev",
+                        "txt": {
+                            "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
+                            f"gl-{manifest_label}._groundlock.receipts.groundlock.dev": [
+                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                            ],
+                            f"c0.gl-{manifest_label}._groundlock.receipts.groundlock.dev": [
+                                "gdc1 i=0 d=abc"
+                            ],
+                        },
+                        "status": {
+                            "key": {
+                                "version": "groundlock-status/v1",
+                                "kind": "key",
+                            },
+                            "claim": {
+                                "version": "groundlock-status/v1",
+                                "kind": "claim",
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev", str(sample)
+            )
+
+        self.assertTrue(result.ok)
 
     def test_homepage_metadata_accepts_public_launch_origin(self) -> None:
         html = """

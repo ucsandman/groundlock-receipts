@@ -178,14 +178,14 @@ python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fi
 
 `--health-url` must be the deployed verifier root URL or its exact `/api/health` URL. Nested app paths are rejected so the audit does not probe `<path>/api/health` or compare homepage metadata against the wrong launch URL.
 
-`--dns-fixture` must be the fixture generated for the same launch domain. The audit checks the fixture JSON before external requests and requires matching `domain`, identity TXT, manifest TXT, chunk TXT, key status, and claim status entries.
+`--dns-fixture` must be the fixture generated for the same launch domain and the same `--file-or-hash` demo input. The audit checks the fixture JSON before external requests and requires matching `domain`, identity TXT, manifest TXT for the demo hash, chunk TXT for the demo hash, key status, and claim status entries.
 
 The audit exits non-zero if:
 
 - the git worktree is dirty
 - `docs/show-hn-draft.md` still contains `LOCAL_DEMO_ONLY`
 - the launch URLs are not public HTTPS URLs, include credentials/query/fragment suffixes, contain malformed DNS labels, use a nested health URL path, or the signer domain is still a placeholder/local host or IP address
-- the local `dns-fixture.json` is missing, malformed, for a different domain, or lacks identity, manifest, chunk, key status, or claim status entries
+- the local `dns-fixture.json` is missing, malformed, for a different domain, for a different demo hash, or lacks identity, manifest, chunk, key status, or claim status entries
 - the latest GitHub Actions `CI` run on `main` is not successful for the current git `HEAD`
 - the deployed `/api/health` response is missing, not `ok`, still in demo mode, missing signer domain, site URL, DoH endpoint, or status base URL configuration, or missing bundled status records when the status base URL shares the verifier origin
 - the deployed homepage title, canonical URL, Open Graph URL, or share image metadata still points at localhost, a placeholder, or a different launch origin

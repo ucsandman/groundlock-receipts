@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import html.parser
 import json
 import ipaddress
@@ -11,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import unicodedata
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -403,7 +406,12 @@ def check_web_verify(url: str, file_or_hash: str, timeout: float = 10.0) -> Chec
     return validate_web_verify_body(body)
 
 
-def check_dns_fixture(path: str, domain: str) -> CheckResult:
+def check_dns_fixture(path: str, domain: str, file_or_hash: str) -> CheckResult:
+    try:
+        content_hash = content_hash_for_input(file_or_hash)
+    except Exception as exc:
+        return CheckResult("dns-fixture", False, f"could not compute demo hash: {exc}")
+
     try:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
     except OSError as exc:
@@ -428,7 +436,9 @@ def check_dns_fixture(path: str, domain: str) -> CheckResult:
     if not isinstance(txt, dict) or not txt:
         failures.append("fixture txt records are missing")
     else:
-        failures.extend(validate_fixture_txt_records(txt, expected_domain))
+        failures.extend(
+            validate_fixture_txt_records(txt, expected_domain, content_hash)
+        )
 
     status = data.get("status")
     if not isinstance(status, dict):
@@ -449,7 +459,7 @@ def check_dns_fixture(path: str, domain: str) -> CheckResult:
 
 
 def validate_fixture_txt_records(
-    txt: dict[object, object], expected_domain: str
+    txt: dict[object, object], expected_domain: str, content_hash: str
 ) -> list[str]:
     failures = []
     normalized: dict[str, list[str]] = {}
@@ -468,28 +478,80 @@ def validate_fixture_txt_records(
         failures.append(f"fixture identity TXT record is missing: {identity_name}")
 
     manifest_suffix = f"._groundlock.{expected_domain}"
+    expected_manifest_name = f"gl-{cache_label(content_hash)}{manifest_suffix}"
     manifest_found = any(
-        name.endswith(manifest_suffix)
-        and any(value.startswith("gdm1 ") for value in values)
-        for name, values in normalized.items()
+        value.startswith("gdm1 ")
+        for value in normalized.get(expected_manifest_name, [])
     )
     if not manifest_found:
-        failures.append("fixture cache manifest TXT record is missing")
+        failures.append(
+            f"fixture cache manifest TXT record for demo hash is missing: {expected_manifest_name}"
+        )
 
+    expected_chunk_suffix = f".{expected_manifest_name}"
     chunk_found = any(
         name.startswith("c")
-        and name.endswith(manifest_suffix)
+        and name.endswith(expected_chunk_suffix)
         and any(value.startswith("gdc1 ") for value in values)
         for name, values in normalized.items()
     )
     if not chunk_found:
-        failures.append("fixture cache chunk TXT records are missing")
+        failures.append("fixture cache chunk TXT records for demo hash are missing")
 
     return failures
 
 
 def normalize_domain(value: str) -> str:
     return value.strip().rstrip(".").lower()
+
+
+def content_hash_for_input(file_or_hash: str) -> str:
+    if file_or_hash.startswith("sha256:"):
+        if len(file_or_hash) <= len("sha256:"):
+            raise ValueError("empty_sha256_hash")
+        return file_or_hash
+    data = Path(file_or_hash).read_bytes()
+    if len(data) > MAX_WEB_VERIFY_BYTES:
+        raise ValueError("web_verify_input_too_large")
+    return digest_text(data.decode("utf-8"))
+
+
+def digest_text(value: str) -> str:
+    canonical = canonicalize_text(value)
+    digest = hashlib.sha256(canonical.encode("utf-8")).digest()
+    encoded = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+    return f"sha256:{encoded}"
+
+
+def canonicalize_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFC", value)
+    replacements = {
+        "\u2012": "-",
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2015": "-",
+        "\u2010": "-",
+        "\u2011": "-",
+        "\u2212": "-",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201a": "'",
+        "\u201b": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u201e": '"',
+        "\u201f": '"',
+        "\u2026": "...",
+        "\u00a0": " ",
+    }
+    for source, target in replacements.items():
+        normalized = normalized.replace(source, target)
+    return normalized
+
+
+def cache_label(value: str) -> str:
+    hash_value = value[len("sha256:") :] if value.startswith("sha256:") else value
+    return re.sub(r"[^a-z0-9-]", "-", hash_value.lower().replace("_", "-"))
 
 
 def build_check_live_argv(
@@ -657,7 +719,7 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
         check_git_clean(),
         check_show_hn_draft(Path(args.show_hn_draft)),
         check_launch_targets(args),
-        check_dns_fixture(args.dns_fixture, args.domain),
+        check_dns_fixture(args.dns_fixture, args.domain, args.file_or_hash),
     ]
     if any(not result.ok for result in preflight):
         return preflight
