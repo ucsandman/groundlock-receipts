@@ -58,7 +58,7 @@ jobs:
         run: python launch.py --skip-install --skip-build --skip-tests --no-browser --exit-after-ready --port 3010
 
       - name: Build Docker image
-        run: docker build --tag groundlock-web:ci .
+        run: docker build --build-arg NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev --tag groundlock-web:ci .
 
       - name: Smoke Docker image
         shell: bash
@@ -78,3 +78,33 @@ jobs:
             exit 1
           fi
           node scripts/smoke_web_response.mjs http://127.0.0.1:3014
+
+      - name: Smoke Docker live mode
+        shell: bash
+        run: |
+          STATUS_RECORDS='[{"version":"groundlock-status/v1","kind":"key","subject":{"signerDomain":"publisher.example","kid":"k1"},"status":"active","issuedAt":"2026-06-08T00:00:00.000Z"},{"version":"groundlock-status/v1","kind":"claim","subject":{"receiptHash":"sha256:abc123"},"status":"active","issuedAt":"2026-06-08T00:00:00.000Z"}]'
+          docker run --rm -d --name groundlock-web-live-ci -p 3015:3000 \
+            -e GROUNDLOCK_SIGNER_DOMAIN=publisher.example \
+            -e NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev \
+            -e GROUNDLOCK_DOH_ENDPOINT=https://cloudflare-dns.com/dns-query \
+            -e GROUNDLOCK_STATUS_BASE_URL=https://receipts.groundlock.dev/groundlock/status \
+            -e "GROUNDLOCK_STATUS_RECORDS_JSON=${STATUS_RECORDS}" \
+            groundlock-web:ci
+          trap 'docker stop groundlock-web-live-ci || true' EXIT
+          ready=0
+          for attempt in {1..60}; do
+            if node -e "fetch('http://127.0.0.1:3015/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            docker logs groundlock-web-live-ci || true
+            exit 1
+          fi
+          node scripts/smoke_web_response.mjs http://127.0.0.1:3015 \
+            --expect-live \
+            --expected-origin https://receipts.groundlock.dev \
+            --status-key-lookup key:publisher.example:k1 \
+            --status-claim-lookup claim:sha256:abc123

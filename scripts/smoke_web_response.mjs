@@ -38,7 +38,17 @@ if (
 }
 
 function usage() {
-  console.error("Usage: node scripts/smoke_web_response.mjs <base-url>");
+  console.error(
+    [
+      "Usage: node scripts/smoke_web_response.mjs <base-url> [options]",
+      "",
+      "Options:",
+      "  --expect-live",
+      "  --expected-origin <https-origin>",
+      "  --status-key-lookup <lookup>",
+      "  --status-claim-lookup <lookup>",
+    ].join("\n"),
+  );
 }
 
 function normalizeBaseUrl(raw) {
@@ -52,6 +62,48 @@ function normalizeBaseUrl(raw) {
   } catch {
     return null;
   }
+}
+
+function normalizeExpectedOrigin(raw) {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+      return null;
+    }
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function parseArgs(argv) {
+  const [rawBaseUrl, ...rest] = argv;
+  const options = {
+    baseUrl: normalizeBaseUrl(rawBaseUrl),
+    expectLive: false,
+    expectedOrigin: null,
+    statusKeyLookup: null,
+    statusClaimLookup: null,
+  };
+  for (let i = 0; i < rest.length; i++) {
+    const token = rest[i];
+    if (token === "--expect-live") {
+      options.expectLive = true;
+    } else if (token === "--expected-origin") {
+      options.expectedOrigin = normalizeExpectedOrigin(rest[++i]);
+      if (!options.expectedOrigin) throw new Error("--expected-origin must be a public HTTPS origin");
+    } else if (token === "--status-key-lookup") {
+      options.statusKeyLookup = rest[++i];
+      if (!options.statusKeyLookup) throw new Error("--status-key-lookup requires a value");
+    } else if (token === "--status-claim-lookup") {
+      options.statusClaimLookup = rest[++i];
+      if (!options.statusClaimLookup) throw new Error("--status-claim-lookup requires a value");
+    } else {
+      throw new Error(`unknown option ${token}`);
+    }
+  }
+  return options;
 }
 
 function endpoint(baseUrl, path) {
@@ -92,7 +144,66 @@ async function fetchText(url) {
   return { response, text };
 }
 
-async function smoke(baseUrl) {
+function validateHomepageMetadata(html, expectedOrigin) {
+  if (!expectedOrigin) return;
+  const expectedRoot = `${expectedOrigin}/`;
+  const checks = [
+    ["canonical", /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i],
+    ["og:url", /<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i],
+    ["og:image", /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i],
+    ["twitter:image", /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i],
+  ];
+  for (const [label, pattern] of checks) {
+    const match = html.match(pattern);
+    if (!match) throw new Error(`/ missing ${label} metadata`);
+    const value = match[1] ?? "";
+    if (label.endsWith("image")) {
+      if (!value.startsWith(expectedRoot)) throw new Error(`/ ${label} does not use ${expectedRoot}`);
+    } else if (value !== expectedRoot && value !== expectedOrigin) {
+      throw new Error(`/ ${label} is ${value}, expected ${expectedRoot}`);
+    }
+  }
+}
+
+function validateHealthBody(body, opts) {
+  if (body?.service !== "groundlock-web" || body?.ok !== true) {
+    throw new Error("/api/health did not return a live health JSON shape");
+  }
+  if (!opts.expectLive) return;
+  if (body.mode !== "live") throw new Error(`/api/health mode is ${body.mode}, expected live`);
+  const checks = body.checks ?? {};
+  const requiredChecks = [
+    "signerDomainConfigured",
+    "siteUrlConfigured",
+    "dohEndpointConfigured",
+    "statusBaseUrlConfigured",
+  ];
+  if (opts.statusKeyLookup || opts.statusClaimLookup) {
+    requiredChecks.push("statusRecordsConfigured");
+  }
+  for (const check of requiredChecks) {
+    if (checks[check] !== true) throw new Error(`/api/health check ${check} was not true`);
+  }
+}
+
+async function validateStatusEndpoint(baseUrl, kind, lookup) {
+  if (!lookup) return;
+  const url = endpoint(baseUrl, `/groundlock/status/${kind}`);
+  url.searchParams.set("lookup", lookup);
+  const { response, text } = await fetchText(url);
+  if (!response.ok) throw new Error(`${url.pathname} returned HTTP ${response.status}`);
+  validateSecurityHeaders(response, url.pathname);
+  if ((response.headers.get("cache-control") ?? "") !== "no-store") {
+    throw new Error(`${url.pathname} missing Cache-Control: no-store`);
+  }
+  const body = JSON.parse(text);
+  if (body?.version !== "groundlock-status/v1" || body?.kind !== kind || body?.status !== "active") {
+    throw new Error(`${url.pathname} did not return an active ${kind} status record`);
+  }
+}
+
+async function smoke(opts) {
+  const baseUrl = opts.baseUrl;
   const paths = ["/", "/api/health"];
   for (const path of paths) {
     const url = endpoint(baseUrl, path);
@@ -102,27 +213,38 @@ async function smoke(baseUrl) {
     }
     validateSecurityHeaders(response, path);
 
+    if (path === "/") {
+      validateHomepageMetadata(text, opts.expectedOrigin);
+    }
+
     if (path === "/api/health") {
       if ((response.headers.get("cache-control") ?? "") !== "no-store") {
         throw new Error("/api/health missing Cache-Control: no-store");
       }
-      const body = JSON.parse(text);
-      if (body?.service !== "groundlock-web" || body?.ok !== true) {
-        throw new Error("/api/health did not return a live health JSON shape");
-      }
+      validateHealthBody(JSON.parse(text), opts);
     }
   }
+  await validateStatusEndpoint(baseUrl, "key", opts.statusKeyLookup);
+  await validateStatusEndpoint(baseUrl, "claim", opts.statusClaimLookup);
 }
 
-const baseUrl = normalizeBaseUrl(process.argv[2]);
-if (!baseUrl) {
+let opts;
+try {
+  opts = parseArgs(process.argv.slice(2));
+} catch (error) {
+  console.error(`FAIL web response smoke: ${error.message}`);
   usage();
   process.exit(2);
 }
 
-smoke(baseUrl)
+if (!opts.baseUrl) {
+  usage();
+  process.exit(2);
+}
+
+smoke(opts)
   .then(() => {
-    console.log(`PASS web response smoke ${baseUrl.origin}${baseUrl.pathname}`);
+    console.log(`PASS web response smoke ${opts.baseUrl.origin}${opts.baseUrl.pathname}`);
   })
   .catch((error) => {
     console.error(`FAIL web response smoke: ${error.message}`);

@@ -38,6 +38,12 @@ docker build -t groundlock-web .
 docker run --rm -p 3000:3000 groundlock-web
 ```
 
+For a public deployment, pass the verifier origin at build time so the statically rendered homepage carries the correct canonical and share metadata:
+
+```powershell
+docker build --build-arg NEXT_PUBLIC_SITE_URL=https://receipts.example.com -t groundlock-web .
+```
+
 For live verifier mode, pass the generated environment block from `groundlock export-web-env --status-base-url <url> --doh-endpoint <url> --site-url <public verifier URL>` through your host's secret/env system. For local testing, write those values to an uncommitted `.env` file and run:
 
 ```powershell
@@ -48,6 +54,7 @@ The image runs `apps/web` with Next standalone output, listens on `PORT` or `300
 
 The web app sets browser hardening headers for all routes: `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Strict-Transport-Security`, `Cross-Origin-Opener-Policy`, `X-DNS-Prefetch-Control`, `X-Permitted-Cross-Domain-Policies`, and `Permissions-Policy`. The production header contract lives in `apps/web/lib/security-header-contract.json`.
 CI runs `node scripts/smoke_web_response.mjs <base-url>` against the built Docker image to prove `/` and `/api/health` return 200, production security headers from that contract, and `Cache-Control: no-store` on health responses.
+CI also starts the same image in live verifier mode with `GROUNDLOCK_SIGNER_DOMAIN`, `NEXT_PUBLIC_SITE_URL`, `GROUNDLOCK_DOH_ENDPOINT`, `GROUNDLOCK_STATUS_BASE_URL`, and bundled `GROUNDLOCK_STATUS_RECORDS_JSON`. That live smoke requires `/api/health` to report live mode, public canonical/share metadata to use the configured HTTPS origin, and the bundled key/claim status endpoints to return active no-store records.
 
 ## Publisher key bootstrap
 

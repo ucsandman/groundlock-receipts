@@ -13,6 +13,9 @@ RUN npm ci
 FROM deps AS build
 WORKDIR /app
 
+ARG NEXT_PUBLIC_SITE_URL
+ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+
 COPY tsconfig.base.json ./
 COPY apps apps
 COPY packages packages

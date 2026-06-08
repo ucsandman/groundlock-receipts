@@ -14,6 +14,8 @@ class ContainerConfigTests(unittest.TestCase):
         self.assertNotIn("docker/dockerfile", dockerfile)
         self.assertIn("node:24", dockerfile)
         self.assertIn("NEXT_TELEMETRY_DISABLED", dockerfile)
+        self.assertIn("ARG NEXT_PUBLIC_SITE_URL", dockerfile)
+        self.assertIn("ENV NEXT_PUBLIC_SITE_URL", dockerfile)
         self.assertIn("HEALTHCHECK", dockerfile)
         self.assertIn("/api/health", dockerfile)
         self.assertIn("USER node", dockerfile)
@@ -34,8 +36,16 @@ class ContainerConfigTests(unittest.TestCase):
         )
 
         self.assertIn("docker build", workflow)
+        self.assertIn(
+            "--build-arg NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev", workflow
+        )
         self.assertIn("docker run", workflow)
         self.assertIn("scripts/smoke_web_response.mjs", workflow)
+        self.assertIn("Smoke Docker live mode", workflow)
+        self.assertIn("GROUNDLOCK_SIGNER_DOMAIN", workflow)
+        self.assertIn("GROUNDLOCK_STATUS_RECORDS_JSON", workflow)
+        self.assertIn("--expect-live", workflow)
+        self.assertIn("--status-key-lookup", workflow)
 
     def test_web_response_smoke_checks_security_headers(self) -> None:
         smoke = (ROOT / "scripts" / "smoke_web_response.mjs").read_text(
@@ -55,6 +65,9 @@ class ContainerConfigTests(unittest.TestCase):
         self.assertIn("unsafe-eval", " ".join(contract["forbiddenCspValues"]))
         self.assertIn("/api/health", smoke)
         self.assertIn("Cache-Control: no-store", smoke)
+        self.assertIn("--expect-live", smoke)
+        self.assertIn("statusRecordsConfigured", smoke)
+        self.assertIn("/groundlock/status/", smoke)
 
 
 if __name__ == "__main__":
