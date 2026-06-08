@@ -82,6 +82,10 @@ See [docs/api-reference.md](docs/api-reference.md) for `/api/verify` request/res
 
 See [docs/architecture.md](docs/architecture.md) for the data flow across core, DNS cache manifest/chunk records, CLI, status/revocation, privacy modes, C2PA interop, and the web verifier.
 
+## Deployment
+
+See [docs/deployment.md](docs/deployment.md) for production web verifier configuration, DNS TXT record requirements, resolver-cache warming, and status endpoint shapes.
+
 ## Threat model
 
 See [docs/threat-model.md](docs/threat-model.md) for canonicalized-hash limits, DNS cache availability limits, attacker capabilities, fail-closed states, key rotation, revocation, C2PA interop boundaries, and private workflow leakage.
@@ -105,6 +109,8 @@ groundlock sign .\notice.txt --source .\source.json --domain publisher.example -
 ## Environment
 
 The local web verifier does not require environment variables or secrets. It reconstructs and verifies demo DNS-cache receipt fixtures; it does not issue receipts.
+
+Production verifier mode is enabled by `GROUNDLOCK_SIGNER_DOMAIN`, with optional `GROUNDLOCK_DOH_ENDPOINT` and required `GROUNDLOCK_STATUS_BASE_URL`.
 
 Publisher signing keys belong in the CLI or a separately authenticated publisher workflow, not the public verifier deployment.
 

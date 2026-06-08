@@ -6,6 +6,8 @@ Public, account-free verifier for GroundLock-canonicalized text content or `sha2
 
 The verifier reconstructs the signed receipt from DNS resolver-cache TXT manifest/chunk records, then checks receipt hashes, signatures, grounding verdict, and status.
 
+If `GROUNDLOCK_SIGNER_DOMAIN` is configured, `/api/verify` uses live DNS-over-HTTPS lookups and HTTP status endpoints. Otherwise it uses local demo fixtures.
+
 ### Request
 
 Send exactly one of:
@@ -61,8 +63,8 @@ interface PublicVerifyResponse {
   "state": "PASS",
   "code": "verified",
   "explanation": "DNS cache receipt verified",
-  "whatItProves": "This demo reconstructs a signed GroundLock receipt from simulated DNS resolver-cache TXT chunks, then verifies the content hash, receipt hash, signature, grounding verdict, and revocation status.",
-  "whatItDoesNotProve": "It does not prove the prose is true, that unmatched prose is complete, that issuance time is independently timestamped, or that live production DNS cache warming is configured.",
+  "whatItProves": "The verifier reconstructs a signed GroundLock receipt from DNS resolver-cache TXT chunks, then verifies the content hash, receipt hash, signature, grounding verdict, and revocation status.",
+  "whatItDoesNotProve": "It does not prove the prose is true, that unmatched prose is complete, that issuance time is independently timestamped, or that resolver caches will retain every chunk.",
   "receiptSummary": {
     "signerDomain": "publisher.example",
     "signerKeyId": "demo-key-1",
@@ -83,8 +85,8 @@ interface PublicVerifyResponse {
   "state": "BLOCK",
   "code": "receipt_blocked",
   "explanation": "receipt verdict is block",
-  "whatItProves": "This demo reconstructs a signed GroundLock receipt from simulated DNS resolver-cache TXT chunks, then verifies the content hash, receipt hash, signature, grounding verdict, and revocation status.",
-  "whatItDoesNotProve": "It does not prove the prose is true, that unmatched prose is complete, that issuance time is independently timestamped, or that live production DNS cache warming is configured.",
+  "whatItProves": "The verifier reconstructs a signed GroundLock receipt from DNS resolver-cache TXT chunks, then verifies the content hash, receipt hash, signature, grounding verdict, and revocation status.",
+  "whatItDoesNotProve": "It does not prove the prose is true, that unmatched prose is complete, that issuance time is independently timestamped, or that resolver caches will retain every chunk.",
   "receiptSummary": {
     "signerDomain": "publisher.example",
     "signerKeyId": "demo-key-1",
@@ -105,8 +107,8 @@ interface PublicVerifyResponse {
   "state": "UNVERIFIABLE",
   "code": "dns_txt_missing",
   "explanation": "No TXT record found for gl-unknownhashvalue._groundlock.publisher.example",
-  "whatItProves": "This demo reconstructs a signed GroundLock receipt from simulated DNS resolver-cache TXT chunks, then verifies the content hash, receipt hash, signature, grounding verdict, and revocation status.",
-  "whatItDoesNotProve": "It does not prove the prose is true, that unmatched prose is complete, that issuance time is independently timestamped, or that live production DNS cache warming is configured.",
+  "whatItProves": "The verifier reconstructs a signed GroundLock receipt from DNS resolver-cache TXT chunks, then verifies the content hash, receipt hash, signature, grounding verdict, and revocation status.",
+  "whatItDoesNotProve": "It does not prove the prose is true, that unmatched prose is complete, that issuance time is independently timestamped, or that resolver caches will retain every chunk.",
   "receiptSummary": null,
   "timingMs": 0
 }
@@ -119,8 +121,8 @@ interface PublicVerifyResponse {
   "state": "REVOKED",
   "code": "status_revoked",
   "explanation": "claim_status_revoked: demo revocation",
-  "whatItProves": "This demo reconstructs a signed GroundLock receipt from simulated DNS resolver-cache TXT chunks, then verifies the content hash, receipt hash, signature, grounding verdict, and revocation status.",
-  "whatItDoesNotProve": "It does not prove the prose is true, that unmatched prose is complete, that issuance time is independently timestamped, or that live production DNS cache warming is configured.",
+  "whatItProves": "The verifier reconstructs a signed GroundLock receipt from DNS resolver-cache TXT chunks, then verifies the content hash, receipt hash, signature, grounding verdict, and revocation status.",
+  "whatItDoesNotProve": "It does not prove the prose is true, that unmatched prose is complete, that issuance time is independently timestamped, or that resolver caches will retain every chunk.",
   "receiptSummary": {
     "signerDomain": "publisher.example",
     "signerKeyId": "demo-key-1",

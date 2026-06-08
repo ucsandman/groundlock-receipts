@@ -38,6 +38,8 @@ Core modules:
 The public verifier accepts `fileText` that is hashed with GroundLock text canonicalization or an already computed `sha256:` hash input. It rejects remote URLs, caps file input at 256 KiB, and rate-limits public requests.
 It does not issue receipts or expose a publisher signing key; signing belongs in the CLI or a separately authenticated publisher workflow.
 
+When `GROUNDLOCK_SIGNER_DOMAIN` is configured, the web verifier uses DNS-over-HTTPS TXT lookups for identity, manifest, and chunk records, then checks key and claim status through `GROUNDLOCK_STATUS_BASE_URL`. Without that environment variable, it runs the built-in demo fixture.
+
 ## Data flow
 
 1. Publisher generates or receives a candidate business message.

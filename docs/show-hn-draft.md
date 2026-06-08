@@ -39,10 +39,14 @@ Local demo:
 CLI demo:
 docs/quickstart-60-second-verify.md signs a local sample, writes local DNS-cache TXT/status fixtures, reconstructs the receipt from TXT chunks, and verifies PASS from the CLI.
 
+Deployment notes:
+docs/deployment.md documents live verifier mode with GROUNDLOCK_SIGNER_DOMAIN, DNS-over-HTTPS TXT lookups, resolver-cache warming, and HTTP key/claim status endpoints.
+
 Before removing LOCAL_DEMO_ONLY, deployment needs:
 - public HTTPS deployment of the web verifier
 - stable publisher signing key managed outside the public verifier
 - configured resolver-cache warming path
+- configured GROUNDLOCK_SIGNER_DOMAIN and GROUNDLOCK_STATUS_BASE_URL
 - _truename.<domain> TXT identity record
 - gl-<hash>._groundlock.<domain> TXT manifest records
 - c<N>.gl-<hash>._groundlock.<domain> TXT receipt chunk records

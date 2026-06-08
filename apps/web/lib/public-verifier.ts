@@ -1,5 +1,6 @@
 import {
   createClaimStatusRecord,
+  createDohTxtResolver,
   createDnsCacheRecords,
   createKeyStatusRecord,
   digestText,
@@ -10,7 +11,9 @@ import {
   type DnsCacheRecords,
   type ProofReceipt,
   type SourceOfTruth,
+  type StatusLookup,
   type StatusLookupResult,
+  type StatusRecord,
   type StatusResolver,
   type TrueNameResolver,
   type TrueNameVerifyResult,
@@ -21,9 +24,9 @@ export const MAX_VERIFY_BYTES = 256 * 1024;
 export const RATE_LIMIT_MAX = 20;
 export const RATE_LIMIT_WINDOW_MS = 60_000;
 export const WHAT_IT_PROVES =
-  "This demo reconstructs a signed GroundLock receipt from simulated DNS resolver-cache TXT chunks, then verifies the content hash, receipt hash, signature, grounding verdict, and revocation status.";
+  "The verifier reconstructs a signed GroundLock receipt from DNS resolver-cache TXT chunks, then verifies the content hash, receipt hash, signature, grounding verdict, and revocation status.";
 export const WHAT_IT_DOES_NOT_PROVE =
-  "It does not prove the prose is true, that unmatched prose is complete, that issuance time is independently timestamped, or that live production DNS cache warming is configured.";
+  "It does not prove the prose is true, that unmatched prose is complete, that issuance time is independently timestamped, or that resolver caches will retain every chunk.";
 
 interface DemoFixture {
   domain: string;
@@ -50,6 +53,21 @@ export function demoInputs() {
 }
 
 export async function verifyPublicContentHash(contentHash: string): Promise<TrueNameVerifyResult> {
+  const liveConfig = liveVerifierConfigFromEnv();
+  if (liveConfig) {
+    if (!liveConfig.statusBaseUrl) {
+      return {
+        state: "UNVERIFIABLE",
+        code: "status_resolver_not_configured",
+        explanation: "GROUNDLOCK_STATUS_BASE_URL is required when GROUNDLOCK_SIGNER_DOMAIN is configured",
+      };
+    }
+    const fetcher = fetchJson;
+    return verifyTrueName(contentHash, liveConfig.signerDomain, {
+      ...createDohTxtResolver(fetcher, liveConfig.dohEndpoint),
+      statusResolver: createHttpStatusResolver(fetcher, liveConfig.statusBaseUrl),
+    });
+  }
   return verifyTrueName(contentHash, demoFixture.domain, demoFixture.resolver);
 }
 
@@ -137,4 +155,67 @@ function mergeTxt(txt: Record<string, string[]>, records: DnsCacheRecords): void
   for (const record of [records.identity, records.manifest, ...records.chunks]) {
     txt[record.name] = [record.value];
   }
+}
+
+interface LiveVerifierConfig {
+  signerDomain: string;
+  dohEndpoint: string;
+  statusBaseUrl: string | null;
+}
+
+type FetchJson = (
+  url: string,
+  init?: { headers?: Record<string, string> },
+) => Promise<{ ok: boolean; status?: number; json(): Promise<unknown> }>;
+
+function liveVerifierConfigFromEnv(): LiveVerifierConfig | null {
+  const signerDomain = cleanEnv(process.env.GROUNDLOCK_SIGNER_DOMAIN);
+  if (!signerDomain) return null;
+  return {
+    signerDomain,
+    dohEndpoint: cleanEnv(process.env.GROUNDLOCK_DOH_ENDPOINT) ?? "https://cloudflare-dns.com/dns-query",
+    statusBaseUrl: cleanEnv(process.env.GROUNDLOCK_STATUS_BASE_URL),
+  };
+}
+
+const fetchJson: FetchJson = async (url, init) => fetch(url, init);
+
+function createHttpStatusResolver(fetcher: FetchJson, baseUrl: string): StatusResolver {
+  return {
+    resolveKeyStatus: async (lookup) => fetchStatusRecord(fetcher, baseUrl, "key", lookup),
+    resolveClaimStatus: async (lookup) => fetchStatusRecord(fetcher, baseUrl, "claim", lookup),
+  };
+}
+
+async function fetchStatusRecord(
+  fetcher: FetchJson,
+  baseUrl: string,
+  kind: "key" | "claim",
+  lookup: StatusLookup,
+): Promise<StatusLookupResult> {
+  if (lookup.publicResolverAllowed !== true) {
+    return { type: "unreachable", reason: "private_status_lookup_not_supported" };
+  }
+  const url = new URL(`${baseUrl.replace(/\/+$/, "")}/${kind}`);
+  url.searchParams.set("lookup", lookup.lookupKey);
+  let body: unknown;
+  try {
+    const response = await fetcher(url.toString(), { headers: { Accept: "application/json" } });
+    if (response.status === 404) return { type: "missing", reason: "status_not_found" };
+    if (!response.ok) return { type: "unreachable", reason: "status_endpoint_unreachable" };
+    body = await response.json();
+  } catch {
+    return { type: "unreachable", reason: "status_endpoint_unreachable" };
+  }
+  if (!isRecord(body)) return { type: "malformed", reason: "status_json_malformed" };
+  return { type: "found", record: body as unknown as StatusRecord };
+}
+
+function cleanEnv(value: string | undefined): string | null {
+  const cleaned = value?.trim();
+  return cleaned ? cleaned : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }

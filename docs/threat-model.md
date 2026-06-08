@@ -81,6 +81,8 @@ Receipt revocation is status-based, not signature-based. A revoked receipt can s
 
 Publishers should keep revocation status reachable for as long as receipts may be checked by counterparties.
 
+In production web verifier mode, key and claim status are read from publisher-controlled HTTPS JSON endpoints. If those endpoints are missing, unreachable, malformed, or return the wrong subject, verification returns UNVERIFIABLE. The status endpoint is not a trusted timestamp authority.
+
 ## DNS cache records
 
 DNS records store the receipt payload:
