@@ -1,18 +1,15 @@
-export const PRODUCTION_CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  "object-src 'none'",
-  "img-src 'self' data:",
-  "font-src 'self' data:",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "connect-src 'self'",
-  "worker-src 'self' blob:",
-  "manifest-src 'self'",
-  "upgrade-insecure-requests",
-].join("; ");
+import securityHeaderContract from "./security-header-contract.json";
+
+type SecurityHeaderName = keyof typeof securityHeaderContract.requiredHeaderValues;
+
+function contractHeaderValue(name: SecurityHeaderName): string {
+  const separator = name === "Permissions-Policy" ? ", " : "; ";
+  return securityHeaderContract.requiredHeaderValues[name].join(separator);
+}
+
+export const PRODUCTION_CONTENT_SECURITY_POLICY = contractHeaderValue(
+  "Content-Security-Policy",
+);
 
 const DEVELOPMENT_CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
@@ -30,16 +27,31 @@ const DEVELOPMENT_CONTENT_SECURITY_POLICY = [
 ].join("; ");
 
 export const SECURITY_HEADERS = [
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Strict-Transport-Security", value: "max-age=31536000" },
-  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-  { key: "X-DNS-Prefetch-Control", value: "off" },
-  { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
+  {
+    key: "X-Content-Type-Options",
+    value: contractHeaderValue("X-Content-Type-Options"),
+  },
+  { key: "X-Frame-Options", value: contractHeaderValue("X-Frame-Options") },
+  { key: "Referrer-Policy", value: contractHeaderValue("Referrer-Policy") },
+  {
+    key: "Strict-Transport-Security",
+    value: contractHeaderValue("Strict-Transport-Security"),
+  },
+  {
+    key: "Cross-Origin-Opener-Policy",
+    value: contractHeaderValue("Cross-Origin-Opener-Policy"),
+  },
+  {
+    key: "X-DNS-Prefetch-Control",
+    value: contractHeaderValue("X-DNS-Prefetch-Control"),
+  },
+  {
+    key: "X-Permitted-Cross-Domain-Policies",
+    value: contractHeaderValue("X-Permitted-Cross-Domain-Policies"),
+  },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), payment=()",
+    value: contractHeaderValue("Permissions-Policy"),
   },
   { key: "Content-Security-Policy", value: PRODUCTION_CONTENT_SECURITY_POLICY },
 ] as const;

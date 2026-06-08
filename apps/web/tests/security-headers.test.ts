@@ -3,6 +3,7 @@ import {
   SECURITY_HEADERS,
   securityHeadersForEnvironment,
 } from "../lib/security-headers";
+import securityHeaderContract from "../lib/security-header-contract.json";
 
 describe("security headers", () => {
   it("keeps the public verifier locked down for browser traffic", () => {
@@ -23,13 +24,17 @@ describe("security headers", () => {
     expect(headers["Permissions-Policy"]).toContain("microphone=()");
     expect(headers["Permissions-Policy"]).toContain("geolocation=()");
     expect(headers["Permissions-Policy"]).toContain("payment=()");
-    expect(headers["Content-Security-Policy"]).toContain("default-src 'self'");
-    expect(headers["Content-Security-Policy"]).toContain("object-src 'none'");
-    expect(headers["Content-Security-Policy"]).toContain("frame-ancestors 'none'");
-    expect(headers["Content-Security-Policy"]).toContain("connect-src 'self'");
-    expect(headers["Content-Security-Policy"]).toContain("upgrade-insecure-requests");
-    expect(headers["Content-Security-Policy"]).not.toContain("'unsafe-eval'");
-    expect(headers["Content-Security-Policy"]).not.toContain("localhost");
+    for (const [headerName, requiredValues] of Object.entries(
+      securityHeaderContract.requiredHeaderValues,
+    )) {
+      expect(headers[headerName]).toBeDefined();
+      for (const requiredValue of requiredValues) {
+        expect(headers[headerName]).toContain(requiredValue);
+      }
+    }
+    for (const forbiddenValue of securityHeaderContract.forbiddenCspValues) {
+      expect(headers["Content-Security-Policy"]).not.toContain(forbiddenValue);
+    }
   });
 
   it("keeps local development compatible with Next hot reload without weakening production headers", () => {

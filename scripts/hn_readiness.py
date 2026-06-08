@@ -45,31 +45,29 @@ DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 CHUNK_DATA_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 MAX_WEB_VERIFY_BYTES = 256 * 1024
 STATUS_VALUES = {"active", "revoked", "retracted", "compromised"}
-SECURITY_HEADER_REQUIREMENTS = {
-    "Content-Security-Policy": [
-        "default-src 'self'",
-        "base-uri 'self'",
-        "form-action 'self'",
-        "frame-ancestors 'none'",
-        "object-src 'none'",
-        "connect-src 'self'",
-        "upgrade-insecure-requests",
-    ],
-    "X-Content-Type-Options": ["nosniff"],
-    "X-Frame-Options": ["DENY"],
-    "Referrer-Policy": ["strict-origin-when-cross-origin"],
-    "Strict-Transport-Security": ["max-age=31536000"],
-    "Cross-Origin-Opener-Policy": ["same-origin"],
-    "X-DNS-Prefetch-Control": ["off"],
-    "X-Permitted-Cross-Domain-Policies": ["none"],
-    "Permissions-Policy": [
-        "camera=()",
-        "microphone=()",
-        "geolocation=()",
-        "payment=()",
-    ],
-}
-FORBIDDEN_CSP_VALUES = ["'unsafe-eval'", "localhost", "127.0.0.1"]
+
+
+def load_security_header_contract() -> tuple[dict[str, list[str]], list[str]]:
+    path = ROOT / "apps" / "web" / "lib" / "security-header-contract.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    required = data.get("requiredHeaderValues")
+    forbidden = data.get("forbiddenCspValues")
+    if not isinstance(required, dict) or not isinstance(forbidden, list):
+        raise ValueError("security header contract is malformed")
+    for name, values in required.items():
+        if not isinstance(name, str) or not isinstance(values, list):
+            raise ValueError("security header contract has malformed header values")
+        if not all(isinstance(value, str) and value for value in values):
+            raise ValueError("security header contract has malformed header values")
+    if not all(isinstance(value, str) and value for value in forbidden):
+        raise ValueError("security header contract has malformed forbidden values")
+    return (
+        {name: values for name, values in required.items()},
+        forbidden,
+    )
+
+
+SECURITY_HEADER_REQUIREMENTS, FORBIDDEN_CSP_VALUES = load_security_header_contract()
 
 
 @dataclass(frozen=True)

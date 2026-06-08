@@ -1,26 +1,41 @@
 #!/usr/bin/env node
 
-const REQUIRED_HEADER_VALUES = {
-  "content-security-policy": [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-    "object-src 'none'",
-    "connect-src 'self'",
-    "upgrade-insecure-requests",
-  ],
-  "x-content-type-options": ["nosniff"],
-  "x-frame-options": ["DENY"],
-  "referrer-policy": ["strict-origin-when-cross-origin"],
-  "strict-transport-security": ["max-age=31536000"],
-  "cross-origin-opener-policy": ["same-origin"],
-  "x-dns-prefetch-control": ["off"],
-  "x-permitted-cross-domain-policies": ["none"],
-  "permissions-policy": ["camera=()", "microphone=()", "geolocation=()", "payment=()"],
-};
+import { readFileSync } from "node:fs";
 
-const FORBIDDEN_CSP_VALUES = ["'unsafe-eval'", "localhost", "127.0.0.1"];
+const contract = JSON.parse(
+  readFileSync(
+    new URL("../apps/web/lib/security-header-contract.json", import.meta.url),
+    "utf8",
+  ),
+);
+
+if (
+  !contract ||
+  typeof contract !== "object" ||
+  !contract.requiredHeaderValues ||
+  typeof contract.requiredHeaderValues !== "object" ||
+  !Array.isArray(contract.forbiddenCspValues)
+) {
+  throw new Error("security header contract is malformed");
+}
+
+const REQUIRED_HEADER_VALUES = contract.requiredHeaderValues;
+const FORBIDDEN_CSP_VALUES = contract.forbiddenCspValues;
+
+for (const [headerName, expectedValues] of Object.entries(REQUIRED_HEADER_VALUES)) {
+  if (
+    typeof headerName !== "string" ||
+    !Array.isArray(expectedValues) ||
+    !expectedValues.every((value) => typeof value === "string" && value)
+  ) {
+    throw new Error("security header contract has malformed header values");
+  }
+}
+if (
+  !FORBIDDEN_CSP_VALUES.every((value) => typeof value === "string" && value)
+) {
+  throw new Error("security header contract has malformed forbidden values");
+}
 
 function usage() {
   console.error("Usage: node scripts/smoke_web_response.mjs <base-url>");

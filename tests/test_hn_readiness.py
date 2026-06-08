@@ -150,21 +150,11 @@ def production_security_headers(
     *, csp: str | None = None, cache_control: str | None = None
 ) -> dict[str, str]:
     headers = {
-        "Content-Security-Policy": csp
-        or (
-            "default-src 'self'; base-uri 'self'; form-action 'self'; "
-            "frame-ancestors 'none'; object-src 'none'; connect-src 'self'; "
-            "upgrade-insecure-requests"
-        ),
-        "X-Content-Type-Options": "nosniff",
-        "X-Frame-Options": "DENY",
-        "Referrer-Policy": "strict-origin-when-cross-origin",
-        "Strict-Transport-Security": "max-age=31536000",
-        "Cross-Origin-Opener-Policy": "same-origin",
-        "X-DNS-Prefetch-Control": "off",
-        "X-Permitted-Cross-Domain-Policies": "none",
-        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+        name: "; ".join(values)
+        for name, values in hn_readiness.SECURITY_HEADER_REQUIREMENTS.items()
     }
+    if csp is not None:
+        headers["Content-Security-Policy"] = csp
     if cache_control is not None:
         headers["Cache-Control"] = cache_control
     return headers
@@ -392,6 +382,17 @@ class HnReadinessTests(unittest.TestCase):
         self.assertEqual(ok, [])
         self.assertTrue(any("Content-Security-Policy" in item for item in missing))
         self.assertIn("'unsafe-eval'", "; ".join(dev_csp))
+
+    def test_response_headers_load_shared_contract(self) -> None:
+        self.assertIn(
+            "Content-Security-Policy", hn_readiness.SECURITY_HEADER_REQUIREMENTS
+        )
+        self.assertIn("localhost", hn_readiness.FORBIDDEN_CSP_VALUES)
+        self.assertIn("127.0.0.1", hn_readiness.FORBIDDEN_CSP_VALUES)
+        self.assertIn(
+            "upgrade-insecure-requests",
+            hn_readiness.SECURITY_HEADER_REQUIREMENTS["Content-Security-Policy"],
+        )
 
     def test_response_headers_require_no_store_for_api_responses(self) -> None:
         ok = hn_readiness.validate_response_headers(

@@ -1,3 +1,4 @@
+import json
 import unittest
 from pathlib import Path
 
@@ -40,12 +41,18 @@ class ContainerConfigTests(unittest.TestCase):
         smoke = (ROOT / "scripts" / "smoke_web_response.mjs").read_text(
             encoding="utf-8"
         )
+        contract = json.loads(
+            (ROOT / "apps" / "web" / "lib" / "security-header-contract.json").read_text(
+                encoding="utf-8"
+            )
+        )
 
-        self.assertIn("content-security-policy", smoke)
-        self.assertIn("x-frame-options", smoke)
-        self.assertIn("strict-transport-security", smoke)
-        self.assertIn("permissions-policy", smoke)
-        self.assertIn("unsafe-eval", smoke)
+        self.assertIn("security-header-contract.json", smoke)
+        self.assertIn("Content-Security-Policy", contract["requiredHeaderValues"])
+        self.assertIn("X-Frame-Options", contract["requiredHeaderValues"])
+        self.assertIn("Strict-Transport-Security", contract["requiredHeaderValues"])
+        self.assertIn("Permissions-Policy", contract["requiredHeaderValues"])
+        self.assertIn("unsafe-eval", " ".join(contract["forbiddenCspValues"]))
         self.assertIn("/api/health", smoke)
         self.assertIn("Cache-Control: no-store", smoke)
 
