@@ -1,4 +1,5 @@
 import { jsonNoStore } from "../../../lib/http";
+import { configuredFetchTimeoutMs } from "../../../lib/fetch-timeout";
 import { configuredLaunchHttpsUrl } from "../../../lib/launch-url";
 import { readStatusRecords } from "../../../lib/status-endpoint";
 import type { StatusRecord } from "@groundlock/core";
@@ -55,6 +56,10 @@ export function GET() {
 
   if (mode === "live" && !isConfiguredHttpsUrl(process.env.GROUNDLOCK_STATUS_BASE_URL)) {
     return liveConfigError("invalid_status_base_url", checks);
+  }
+
+  if (mode === "live" && configuredFetchTimeoutMs() === null) {
+    return liveConfigError("invalid_fetch_timeout", checks);
   }
 
   if (mode === "live" && usesBundledStatusEndpoint() && !checks.statusRecordsConfigured) {

@@ -19,6 +19,7 @@ import {
   type TrueNameVerifyResult,
 } from "@groundlock/core";
 import { cleanCandidate, exampleSource, fabricatingCandidate } from "./examples";
+import { MAX_FETCH_TIMEOUT_MS, configuredFetchTimeoutMs } from "./fetch-timeout";
 import { configuredLaunchHttpsUrl } from "./launch-url";
 
 export const MAX_VERIFY_BYTES = 256 * 1024;
@@ -86,7 +87,15 @@ export async function verifyPublicContentHash(contentHash: string): Promise<True
         explanation: "GROUNDLOCK_STATUS_BASE_URL must be a valid HTTPS URL when GROUNDLOCK_SIGNER_DOMAIN is configured",
       };
     }
-    const fetcher = fetchJson;
+    const fetchTimeoutMs = configuredFetchTimeoutMs();
+    if (fetchTimeoutMs === null) {
+      return {
+        state: "UNVERIFIABLE",
+        code: "fetch_timeout_invalid",
+        explanation: `GROUNDLOCK_FETCH_TIMEOUT_MS must be an integer from 1 to ${MAX_FETCH_TIMEOUT_MS}`,
+      };
+    }
+    const fetcher = fetchJsonWithTimeout(fetchTimeoutMs);
     return verifyTrueName(contentHash, liveConfig.signerDomain, {
       ...createDohTxtResolver(fetcher, dohEndpoint),
       statusResolver: createHttpStatusResolver(fetcher, statusBaseUrl),
@@ -202,7 +211,17 @@ function liveVerifierConfigFromEnv(): LiveVerifierConfig | null {
   };
 }
 
-const fetchJson: FetchJson = async (url, init) => fetch(url, init);
+function fetchJsonWithTimeout(timeoutMs: number): FetchJson {
+  return async (url, init) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+}
 
 function createHttpStatusResolver(fetcher: FetchJson, baseUrl: string): StatusResolver {
   return {

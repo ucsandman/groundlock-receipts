@@ -57,6 +57,7 @@ Remote URL verification is intentionally rejected:
 
 - `fileText` maximum: 256 KiB.
 - Rate limit: defaults to 240 public verifier requests per 60 seconds per app instance.
+- Live DoH/status fetch timeout: defaults to 5000 ms per external request, configurable with `GROUNDLOCK_FETCH_TIMEOUT_MS` from 1 through 30000.
 - JSON responses use `Cache-Control: no-store`.
 - Remote URL fetching is not supported by the public endpoint.
 - Publisher signing is not supported by the public endpoint.

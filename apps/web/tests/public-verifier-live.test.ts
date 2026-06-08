@@ -18,12 +18,14 @@ const originalEnv = {
   GROUNDLOCK_SIGNER_DOMAIN: process.env.GROUNDLOCK_SIGNER_DOMAIN,
   GROUNDLOCK_DOH_ENDPOINT: process.env.GROUNDLOCK_DOH_ENDPOINT,
   GROUNDLOCK_STATUS_BASE_URL: process.env.GROUNDLOCK_STATUS_BASE_URL,
+  GROUNDLOCK_FETCH_TIMEOUT_MS: process.env.GROUNDLOCK_FETCH_TIMEOUT_MS,
 };
 
 afterEach(() => {
   restoreEnv("GROUNDLOCK_SIGNER_DOMAIN", originalEnv.GROUNDLOCK_SIGNER_DOMAIN);
   restoreEnv("GROUNDLOCK_DOH_ENDPOINT", originalEnv.GROUNDLOCK_DOH_ENDPOINT);
   restoreEnv("GROUNDLOCK_STATUS_BASE_URL", originalEnv.GROUNDLOCK_STATUS_BASE_URL);
+  restoreEnv("GROUNDLOCK_FETCH_TIMEOUT_MS", originalEnv.GROUNDLOCK_FETCH_TIMEOUT_MS);
   vi.unstubAllGlobals();
   vi.resetModules();
 });
@@ -42,6 +44,24 @@ describe("live public verifier", () => {
     expect(result).toEqual(expect.objectContaining({
       state: "UNVERIFIABLE",
       code: "doh_resolver_not_configured",
+    }));
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before network calls when live mode has an invalid fetch timeout", async () => {
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.example";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.example/groundlock";
+    process.env.GROUNDLOCK_FETCH_TIMEOUT_MS = "0";
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { verifyPublicContentHash } = await import("../lib/public-verifier");
+    const result = await verifyPublicContentHash(digestText(liveCandidate));
+
+    expect(result).toEqual(expect.objectContaining({
+      state: "UNVERIFIABLE",
+      code: "fetch_timeout_invalid",
     }));
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -69,6 +89,46 @@ describe("live public verifier", () => {
       code,
     }));
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("bounds live resolver fetches with an abort timeout", async () => {
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.example";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.example/groundlock";
+    process.env.GROUNDLOCK_FETCH_TIMEOUT_MS = "1";
+    let sawAbortSignal = false;
+    let sawAbort = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+        const signal = init?.signal;
+        sawAbortSignal = signal instanceof AbortSignal;
+        return new Promise((_resolve, reject) => {
+          if (!signal) {
+            reject(new Error("missing abort signal"));
+            return;
+          }
+          signal.addEventListener(
+            "abort",
+            () => {
+              sawAbort = true;
+              reject(new Error("aborted"));
+            },
+            { once: true },
+          );
+        });
+      }),
+    );
+
+    const { verifyPublicContentHash } = await import("../lib/public-verifier");
+    const result = await verifyPublicContentHash(digestText(liveCandidate));
+
+    expect(result).toEqual(expect.objectContaining({
+      state: "UNVERIFIABLE",
+      code: "doh_unreachable",
+    }));
+    expect(sawAbortSignal).toBe(true);
+    expect(sawAbort).toBe(true);
   });
 
   it("reconstructs receipts from configured DoH TXT records and HTTP status records", async () => {

@@ -33,6 +33,7 @@ import {
 } from "@groundlock/core";
 
 export const MAX_INPUT_BYTES = 1_000_000;
+export const DEFAULT_FETCH_TIMEOUT_MS = 5_000;
 const DNS_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 export interface SignFileOptions {
@@ -306,6 +307,7 @@ export async function exportWebEnv(opts: ExportWebEnvOptions): Promise<string> {
     ...(opts.siteUrl ? [`NEXT_PUBLIC_SITE_URL=${normalizeUrlOrigin(opts.siteUrl)}`] : []),
     `GROUNDLOCK_DOH_ENDPOINT=${dohEndpoint}`,
     `GROUNDLOCK_STATUS_BASE_URL=${statusBaseUrl}`,
+    `GROUNDLOCK_FETCH_TIMEOUT_MS=${DEFAULT_FETCH_TIMEOUT_MS}`,
     `GROUNDLOCK_STATUS_RECORDS_JSON=${JSON.stringify(records)}`,
   ];
   return `${lines.join("\n")}\n`;
@@ -780,7 +782,15 @@ type FetchJson = (
   init?: { headers?: Record<string, string> },
 ) => Promise<{ ok: boolean; status?: number; json(): Promise<unknown> }>;
 
-const fetchJson: FetchJson = async (url, init) => fetch(url, init);
+const fetchJson: FetchJson = async (url, init) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
 
 function createHttpStatusResolver(fetcher: FetchJson, baseUrl: string): StatusResolver {
   return {

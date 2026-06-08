@@ -218,6 +218,7 @@ def write_launch_kit(
                 f"NEXT_PUBLIC_SITE_URL={site_url}",
                 f"GROUNDLOCK_DOH_ENDPOINT={doh_endpoint}",
                 f"GROUNDLOCK_STATUS_BASE_URL={status_base_url}",
+                "GROUNDLOCK_FETCH_TIMEOUT_MS=5000",
                 f"GROUNDLOCK_STATUS_RECORDS_JSON={status_records_json}",
             ]
         )
@@ -1518,6 +1519,37 @@ class HnReadinessTests(unittest.TestCase):
             "web.env status records JSON does not match DNS fixture status records",
             result.detail,
         )
+
+    def test_launch_kit_check_fails_when_web_env_fetch_timeout_is_invalid(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            web_env_path = kit / "web.env"
+            lines = web_env_path.read_text(encoding="utf-8").splitlines()
+            updated = [
+                (
+                    "GROUNDLOCK_FETCH_TIMEOUT_MS=0"
+                    if line.startswith("GROUNDLOCK_FETCH_TIMEOUT_MS=")
+                    else line
+                )
+                for line in lines
+            ]
+            web_env_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+            refresh_launch_kit_hashes(kit)
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn("web.env fetch timeout", result.detail)
 
     def test_launch_kit_check_fails_when_dns_zone_differs_from_fixture(
         self,

@@ -128,6 +128,7 @@ describe("publisher SDK", () => {
     expect(env).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
     expect(env).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.example/dns-query");
     expect(env).toContain("GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status");
+    expect(env).toContain("GROUNDLOCK_FETCH_TIMEOUT_MS=5000");
     expect(env).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
     expect(env).toContain('"kind":"key"');
     expect(env).toContain('"kind":"claim"');
@@ -173,6 +174,7 @@ describe("publisher SDK", () => {
     expect(zone).toContain('_truename.publisher.example. 600 IN TXT "');
     expect(webEnv).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
     expect(webEnv).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.example/dns-query");
+    expect(webEnv).toContain("GROUNDLOCK_FETCH_TIMEOUT_MS=5000");
     expect(statusRecords).toContain('"kind": "key"');
     expect(statusRecords).toContain('"kind": "claim"');
     expect(summary.schema).toBe("groundlock-launch-kit/v1");

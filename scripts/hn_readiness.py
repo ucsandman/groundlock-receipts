@@ -45,6 +45,7 @@ SITE_TITLE = "GroundLock Receipts"
 DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 CHUNK_DATA_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 MAX_WEB_VERIFY_BYTES = 256 * 1024
+MAX_FETCH_TIMEOUT_MS = 30_000
 STATUS_VALUES = {"active", "revoked", "retracted", "compromised"}
 LAUNCH_KIT_ARTIFACTS = {
     "dnsFixture": "dns-fixture.json",
@@ -920,6 +921,7 @@ def validate_launch_kit_web_env(
         "NEXT_PUBLIC_SITE_URL",
         "GROUNDLOCK_DOH_ENDPOINT",
         "GROUNDLOCK_STATUS_BASE_URL",
+        "GROUNDLOCK_FETCH_TIMEOUT_MS",
         "GROUNDLOCK_STATUS_RECORDS_JSON",
     }
     missing = sorted(required - set(entries))
@@ -938,6 +940,16 @@ def validate_launch_kit_web_env(
         web_env_failures.append(
             "web.env status base URL does not match readiness input"
         )
+    timeout_raw = entries["GROUNDLOCK_FETCH_TIMEOUT_MS"]
+    try:
+        timeout_ms = int(timeout_raw)
+    except ValueError:
+        web_env_failures.append("web.env fetch timeout is not an integer")
+    else:
+        if timeout_ms < 1 or timeout_ms > MAX_FETCH_TIMEOUT_MS:
+            web_env_failures.append(
+                f"web.env fetch timeout must be between 1 and {MAX_FETCH_TIMEOUT_MS} ms"
+            )
     try:
         bundled_status_records = json.loads(entries["GROUNDLOCK_STATUS_RECORDS_JSON"])
     except json.JSONDecodeError as exc:

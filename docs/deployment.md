@@ -16,6 +16,7 @@ GROUNDLOCK_SIGNER_DOMAIN=publisher.example
 NEXT_PUBLIC_SITE_URL=https://receipts.example.com
 GROUNDLOCK_DOH_ENDPOINT=https://cloudflare-dns.com/dns-query
 GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status
+GROUNDLOCK_FETCH_TIMEOUT_MS=5000
 GROUNDLOCK_RATE_LIMIT_MAX=240
 GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000
 ```
@@ -26,6 +27,8 @@ Demo mode does not use live DoH. When `GROUNDLOCK_SIGNER_DOMAIN` is set, `GROUND
 
 `GROUNDLOCK_STATUS_BASE_URL` is required when `GROUNDLOCK_SIGNER_DOMAIN` is set.
 The status base URL must be a valid publisher-controlled HTTPS URL. It is used only for public key and claim status; it is not a signing service and not a timestamp authority.
+
+`GROUNDLOCK_FETCH_TIMEOUT_MS` is optional. The default is `5000` ms and valid configured values are integers from `1` through `30000`. It bounds each live DoH or status request so `/api/verify`, `groundlock warm-cache`, and `groundlock check-live` fail closed instead of hanging on an unreachable resolver or status host. `/api/health` returns `503` with `invalid_fetch_timeout` when the configured value is outside that range.
 
 `GROUNDLOCK_RATE_LIMIT_MAX` and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS` are optional. Defaults are `240` verifier requests per `60000` ms per app instance. The public verifier intentionally does not trust spoofable forwarding headers for client identity, so put stricter per-client throttling at a trusted edge proxy if needed.
 
@@ -44,7 +47,7 @@ For a public deployment, pass the verifier origin at build time so the staticall
 docker build --build-arg NEXT_PUBLIC_SITE_URL=https://receipts.example.com -t groundlock-web .
 ```
 
-For live verifier mode, pass the generated environment block from `groundlock export-web-env --status-base-url <url> --doh-endpoint <url> --site-url <public verifier URL>` through your host's secret/env system. For local testing, write those values to an uncommitted `.env` file and run:
+For live verifier mode, pass the generated environment block from `groundlock export-web-env --status-base-url <url> --doh-endpoint <url> --site-url <public verifier URL>` through your host's secret/env system. The generated block includes `GROUNDLOCK_FETCH_TIMEOUT_MS=5000` so live resolver and status requests have a bounded default. For local testing, write those values to an uncommitted `.env` file and run:
 
 ```powershell
 docker run --rm --env-file .env -p 3000:3000 groundlock-web
@@ -209,7 +212,7 @@ python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fi
 
 `--dns-fixture` must be the fixture generated for the same launch domain and the same `--file-or-hash` demo input. The audit checks the fixture JSON before external requests and requires matching `domain`, a valid unambiguous identity TXT whose `kid` matches the manifest key, a valid unambiguous manifest TXT for the demo hash whose signer domain matches the launch domain, every valid unambiguous chunk TXT declared by the manifest `n=<count>`, reconstructed chunk payload that matches manifest `ph`, cached receipt JSON whose signer, candidate content hash, and body hash match the manifest, and valid active `groundlock-status/v1` key/claim status entries whose subjects match the manifest key and receipt hash.
 
-`--launch-kit` is optional for ad hoc checks and recommended for launch. When present, the audit verifies `launch-summary.json`, checks its receipt hash and signer key against the DNS fixture manifest, checks `dns-zone.txt` against the DNS fixture TXT records, checks `web.env` against the readiness inputs and DNS fixture status records, checks `status-records.json` against the DNS fixture key/claim status records, recomputes the public artifact hashes, compares `checksums.txt`, checks that the copied `dns-fixture.json` matches `--dns-fixture`, and scans the public handoff artifacts for private-key markers before making network calls.
+`--launch-kit` is optional for ad hoc checks and recommended for launch. When present, the audit verifies `launch-summary.json`, checks its receipt hash and signer key against the DNS fixture manifest, checks `dns-zone.txt` against the DNS fixture TXT records, checks `web.env` against the readiness inputs, validates its fetch timeout, checks bundled status records against the DNS fixture, checks `status-records.json` against the DNS fixture key/claim status records, recomputes the public artifact hashes, compares `checksums.txt`, checks that the copied `dns-fixture.json` matches `--dns-fixture`, and scans the public handoff artifacts for private-key markers before making network calls.
 
 `--evidence-out` is optional but recommended for launch. It writes a versioned JSON report containing the public launch inputs, optional launch-kit path, current git head, security-header contract hash, and every PASS/FAIL check result. If the evidence file cannot be written, the audit exits non-zero.
 
@@ -219,7 +222,7 @@ The audit exits non-zero if:
 - `docs/show-hn-draft.md` still contains `LOCAL_DEMO_ONLY`
 - the launch URLs are not public HTTPS URLs, include credentials/query/fragment suffixes, contain malformed DNS labels, use a nested health URL path, or the signer domain is still a placeholder/local host or IP address
 - the local `dns-fixture.json` is missing, malformed, for a different domain, for a different demo hash, lacks identity, manifest, declared chunk, key status, or claim status entries, has malformed or ambiguous identity/manifest/chunk TXT records, has chunk payload that does not match manifest `ph`, has cached receipt JSON that is malformed or does not match the manifest/demo hash, has malformed status records, has a manifest signer domain that does not match the launch domain, has an identity `kid` that does not match the manifest key, or has status records that do not match the manifest key/receipt hash
-- `--launch-kit` is provided and the launch kit is missing, has mismatched summary fields, has a summary receipt hash or signer key that does not match the DNS fixture manifest, has `dns-zone.txt` TXT records that do not match the DNS fixture, has `web.env` values that do not match the readiness inputs or DNS fixture status records, has `status-records.json` entries that do not match the DNS fixture status records, has artifact hashes that do not match the files, has a checksum manifest that does not match `launch-summary.json`, has a copied fixture that differs from `--dns-fixture`, or contains private-key markers in public handoff artifacts
+- `--launch-kit` is provided and the launch kit is missing, has mismatched summary fields, has a summary receipt hash or signer key that does not match the DNS fixture manifest, has `dns-zone.txt` TXT records that do not match the DNS fixture, has `web.env` values that do not match the readiness inputs, has an invalid `web.env` fetch timeout, has bundled status records that do not match the DNS fixture, has `status-records.json` entries that do not match the DNS fixture status records, has artifact hashes that do not match the files, has a checksum manifest that does not match `launch-summary.json`, has a copied fixture that differs from `--dns-fixture`, or contains private-key markers in public handoff artifacts
 - the latest GitHub Actions `CI` run on `main` is not successful for the current git `HEAD`
 - the deployed `/api/health` response is missing, not `ok`, still in demo mode, missing signer domain, site URL, DoH endpoint, or status base URL configuration, or missing bundled status records when the status base URL shares the verifier origin
 - the deployed homepage title, canonical URL, Open Graph URL, or share image metadata still points at localhost, a placeholder, or a different launch origin
@@ -238,6 +241,7 @@ The audit exits non-zero if:
 - `GROUNDLOCK_SIGNER_DOMAIN` points at the publisher domain.
 - `NEXT_PUBLIC_SITE_URL` points at the public HTTPS verifier origin.
 - `GROUNDLOCK_DOH_ENDPOINT` points at the same explicit resolver URL used for `warm-cache`, `check-live`, and `hn_readiness.py`.
+- `GROUNDLOCK_FETCH_TIMEOUT_MS` is either unset or an integer from `1` through `30000`; launch kits generated by the CLI set it to `5000`.
 - `GROUNDLOCK_STATUS_BASE_URL` serves key and claim status JSON. If it shares the verifier origin, bundled status records include an active key for `GROUNDLOCK_SIGNER_DOMAIN` and an active `sha256:` claim.
 - `GET /api/health` returns `200` on the deployed verifier and reports `signerDomainConfigured`, `siteUrlConfigured`, `dohEndpointConfigured`, and `statusBaseUrlConfigured`; same-origin status deployments also report `statusRecordsConfigured`.
 - Deployed homepage, health, and verify responses include production security headers; health and verify responses include `Cache-Control: no-store`.

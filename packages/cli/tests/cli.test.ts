@@ -126,6 +126,7 @@ describe("CLI entrypoint", () => {
     expect(out).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.example");
     expect(out).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
     expect(out).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.example/dns-query");
+    expect(out).toContain("GROUNDLOCK_FETCH_TIMEOUT_MS=5000");
     expect(out).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
   });
 
