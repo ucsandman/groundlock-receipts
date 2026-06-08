@@ -93,7 +93,7 @@ Use `GET /api/health` for deployment readiness and uptime monitors. It returns b
 
 In demo mode it returns `200`. In live mode it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is set without the required `GROUNDLOCK_STATUS_BASE_URL` or `GROUNDLOCK_DOH_ENDPOINT`, or when the configured site, DoH, or status URLs are malformed or not HTTPS.
 
-If `GROUNDLOCK_STATUS_BASE_URL` points at the same origin as `NEXT_PUBLIC_SITE_URL`, health also requires `GROUNDLOCK_STATUS_RECORDS_JSON` to parse, contain only valid status records, and include at least one usable key record and one usable claim record; that means the deployment is using the bundled `/groundlock/status/key` and `/groundlock/status/claim` routes. Externally managed status endpoints are allowed without bundled status JSON, but `groundlock check-live` must still pass before launch.
+If `GROUNDLOCK_STATUS_BASE_URL` points at the same origin as `NEXT_PUBLIC_SITE_URL`, health also requires `GROUNDLOCK_STATUS_RECORDS_JSON` to parse, contain only valid status records, include at least one active key record whose subject matches `GROUNDLOCK_SIGNER_DOMAIN`, and include at least one active `sha256:` claim record; that means the deployment is using the bundled `/groundlock/status/key` and `/groundlock/status/claim` routes. Externally managed status endpoints are allowed without bundled status JSON, but `groundlock check-live` must still pass before launch.
 
 This is a deployment configuration check only. It does not prove resolver caches are warmed or that a receipt can verify; use `groundlock check-live` and the deployed `/api/verify` launch audit for that release gate. Health, verify, and status JSON responses use `Cache-Control: no-store` so stale verifier state is not cached by default. The readiness audit also requires production browser hardening headers on deployed homepage and health responses so a platform or proxy cannot silently strip them before launch.
 
@@ -154,7 +154,7 @@ GET <GROUNDLOCK_STATUS_BASE_URL>/key?lookup=key:<signer-domain>:<kid>
 GET <GROUNDLOCK_STATUS_BASE_URL>/claim?lookup=claim:<receipt-hash>
 ```
 
-The bundled web app can serve these endpoints at `/groundlock/status/key` and `/groundlock/status/claim` when `GROUNDLOCK_STATUS_RECORDS_JSON` is configured. For a same-origin deployment, set both variables with a parseable bundle of valid key and claim records or `/api/health` returns `503`:
+The bundled web app can serve these endpoints at `/groundlock/status/key` and `/groundlock/status/claim` when `GROUNDLOCK_STATUS_RECORDS_JSON` is configured. For a same-origin deployment, set both variables with a parseable bundle containing an active key record for `GROUNDLOCK_SIGNER_DOMAIN` and an active `sha256:` claim record or `/api/health` returns `503`:
 
 ```text
 GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status
@@ -233,7 +233,7 @@ The audit exits non-zero if:
 - `GROUNDLOCK_SIGNER_DOMAIN` points at the publisher domain.
 - `NEXT_PUBLIC_SITE_URL` points at the public HTTPS verifier origin.
 - `GROUNDLOCK_DOH_ENDPOINT` points at the same explicit resolver URL used for `warm-cache`, `check-live`, and `hn_readiness.py`.
-- `GROUNDLOCK_STATUS_BASE_URL` serves key and claim status JSON. If it shares the verifier origin, bundled status records are configured and valid.
+- `GROUNDLOCK_STATUS_BASE_URL` serves key and claim status JSON. If it shares the verifier origin, bundled status records include an active key for `GROUNDLOCK_SIGNER_DOMAIN` and an active `sha256:` claim.
 - `GET /api/health` returns `200` on the deployed verifier and reports `signerDomainConfigured`, `siteUrlConfigured`, `dohEndpointConfigured`, and `statusBaseUrlConfigured`; same-origin status deployments also report `statusRecordsConfigured`.
 - Deployed homepage, health, and verify responses include production security headers; health and verify responses include `Cache-Control: no-store`.
 - Container image builds and its Docker healthcheck passes, if deploying by container.

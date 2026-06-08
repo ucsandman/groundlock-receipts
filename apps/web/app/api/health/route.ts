@@ -1,6 +1,7 @@
 import { jsonNoStore } from "../../../lib/http";
 import { configuredLaunchHttpsUrl } from "../../../lib/launch-url";
 import { readStatusRecords } from "../../../lib/status-endpoint";
+import type { StatusRecord } from "@groundlock/core";
 
 export const runtime = "nodejs";
 
@@ -83,7 +84,7 @@ export function GET() {
         { status: statusRecords.status },
       );
     }
-    if (!hasStatusRecordKind(statusRecords.records, "key") || !hasStatusRecordKind(statusRecords.records, "claim")) {
+    if (!hasUsableBundledStatusRecords(statusRecords.records, process.env.GROUNDLOCK_SIGNER_DOMAIN)) {
       return jsonNoStore(
         {
           service: "groundlock-web",
@@ -123,8 +124,34 @@ function isConfiguredHttpsUrl(value: string | undefined): boolean {
   return configuredLaunchHttpsUrl(value) !== null;
 }
 
-function hasStatusRecordKind(records: Array<{ kind: string }>, kind: "key" | "claim"): boolean {
-  return records.some((record) => record.kind === kind);
+function hasUsableBundledStatusRecords(records: StatusRecord[], signerDomain: string | undefined): boolean {
+  const normalizedSignerDomain = normalizeDomain(signerDomain);
+  if (!normalizedSignerDomain) return false;
+  return hasActiveKeyForSigner(records, normalizedSignerDomain) && hasActiveClaim(records);
+}
+
+function hasActiveKeyForSigner(records: StatusRecord[], signerDomain: string): boolean {
+  return records.some(
+    (record) =>
+      record.kind === "key" &&
+      record.status === "active" &&
+      normalizeDomain(record.subject.signerDomain) === signerDomain &&
+      record.subject.kid.trim().length > 0,
+  );
+}
+
+function hasActiveClaim(records: StatusRecord[]): boolean {
+  return records.some(
+    (record) =>
+      record.kind === "claim" &&
+      record.status === "active" &&
+      /^sha256:[A-Za-z0-9_-]+$/.test(record.subject.receiptHash),
+  );
+}
+
+function normalizeDomain(value: string | undefined): string | null {
+  const normalized = value?.trim().replace(/\.$/, "").toLowerCase();
+  return normalized ? normalized : null;
 }
 
 function liveConfigError(code: string, checks: HealthChecks) {

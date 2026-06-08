@@ -4,7 +4,7 @@
 
 Config-only health check for hosts and uptime monitors.
 
-It returns `200` in demo mode. In live verifier mode, it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is configured but `GROUNDLOCK_STATUS_BASE_URL` or `GROUNDLOCK_DOH_ENDPOINT` is missing, malformed, not HTTPS, credentialed, query/fragment-suffixed, malformed as a DNS host, or IP-based. If `NEXT_PUBLIC_SITE_URL` is set, it must also be a valid launch HTTPS URL. If `GROUNDLOCK_STATUS_BASE_URL` points at the same origin as `NEXT_PUBLIC_SITE_URL`, it also returns `503` until `GROUNDLOCK_STATUS_RECORDS_JSON` is parseable, every entry is a valid status record, and the bundle contains at least one usable key record and one usable claim record for the bundled status routes. It reports booleans only and does not expose configured domain, resolver, status URL, or status record values.
+It returns `200` in demo mode. In live verifier mode, it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is configured but `GROUNDLOCK_STATUS_BASE_URL` or `GROUNDLOCK_DOH_ENDPOINT` is missing, malformed, not HTTPS, credentialed, query/fragment-suffixed, malformed as a DNS host, or IP-based. If `NEXT_PUBLIC_SITE_URL` is set, it must also be a valid launch HTTPS URL. If `GROUNDLOCK_STATUS_BASE_URL` points at the same origin as `NEXT_PUBLIC_SITE_URL`, it also returns `503` until `GROUNDLOCK_STATUS_RECORDS_JSON` is parseable, every entry is a valid status record, and the bundle contains an active key record for the configured signer domain plus at least one active `sha256:` claim record for the bundled status routes. It reports booleans only and does not expose configured domain, resolver, status URL, or status record values.
 
 ```json
 {
