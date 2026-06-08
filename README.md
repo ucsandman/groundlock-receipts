@@ -83,8 +83,9 @@ npm run dev --workspace @groundlock/web -- --hostname 127.0.0.1 --port 3000
 docker build -t groundlock-web .
 docker run --rm -p 3000:3000 groundlock-web
 groundlock export-web-env .\published\dns-fixture.json --status-base-url https://publisher.example/groundlock/status
+groundlock setup-domain publisher.example --receipt .\receipt.json --public-key .\public.jwk
 groundlock warm-cache .\published\dns-fixture.json --doh-endpoint https://cloudflare-dns.com/dns-query
-groundlock check-live sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status
+groundlock check-live sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
 python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\dns-fixture.json --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status
 ```
 
@@ -136,6 +137,7 @@ groundlock sign .\notice.txt --source .\source.json --domain publisher.example -
 The local web verifier does not require environment variables or secrets. It reconstructs and verifies demo DNS-cache receipt fixtures; it does not issue receipts.
 
 Production verifier mode is enabled by `GROUNDLOCK_SIGNER_DOMAIN`, with optional `GROUNDLOCK_DOH_ENDPOINT` and required `GROUNDLOCK_STATUS_BASE_URL`.
+Use `.env.example` for placeholder names and deployment shape; never commit real `.env` files.
 
 Publisher signing keys belong in the CLI or a separately authenticated publisher workflow, not the public verifier deployment.
 

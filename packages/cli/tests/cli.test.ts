@@ -101,6 +101,37 @@ describe("CLI entrypoint", () => {
     expect(out).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
   });
 
+  it("prints setup-domain records from the actual CLI command without DNS mutation", async () => {
+    const { dir } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const receipt = issueVerifiedReceipt(
+      "Dear Jane Roe, return $2,000.00.",
+      source,
+      { kid: key.kid, privateKeyJwk: key.privateKeyJwk },
+      "2026-06-08T00:00:00.000Z",
+      { signerDomain: "publisher.example", contentClass: "tenant-notice" },
+    );
+    const receiptPath = path.join(dir, "receipt.json");
+    await writeFile(receiptPath, JSON.stringify(receipt), "utf8");
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    const code = await main([
+      "setup-domain",
+      "publisher.example",
+      "--receipt",
+      receiptPath,
+      "--public-key",
+      JSON.stringify(key.publicKeyJwk),
+    ]);
+
+    expect(code).toBe(0);
+    const out = stdout.mock.calls.map((call) => String(call[0])).join("");
+    expect(out).toContain("_truename.publisher.example TXT");
+    expect(out).toContain("cache-manifest");
+    expect(out).toContain("cache-chunk");
+    expect(out).toContain("DNS mutation: none");
+  });
+
   it("warms DNS cache fixture records through the configured DoH endpoint", async () => {
     const { dir, sourcePath, blockedPath } = await fixtureDir();
     const key = generateSigningKey("k1");

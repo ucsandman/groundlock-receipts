@@ -26,6 +26,9 @@ Core modules:
 - `setup-domain` prints DNS cache TXT records for an existing receipt and never mutates DNS.
 - `local-publish` writes local receipt/status/DNS-cache fixture artifacts for demos and tests.
 - `verify` verifies a file or hash by reconstructing the receipt from a local DNS-cache fixture.
+- `export-web-env` prints the public verifier environment block from a local fixture.
+- `warm-cache` checks every expected TXT answer through the configured DoH resolver path.
+- `check-live` verifies the public DNS/status path for one demo file or hash.
 - `--c2pa-sidecar` emits a C2PA-compatible interop sidecar for a signed receipt.
 
 ### Web verifier

@@ -9,6 +9,8 @@ The public verifier must not hold receipt-signing private keys.
 
 ## Environment
 
+Copy `.env.example` only as a placeholder reference. Do not commit a real `.env` file.
+
 ```text
 GROUNDLOCK_SIGNER_DOMAIN=publisher.example
 GROUNDLOCK_DOH_ENDPOINT=https://cloudflare-dns.com/dns-query
@@ -50,8 +52,10 @@ This is a deployment configuration check only. It does not prove resolver caches
 The publisher must serve and warm the records printed by the CLI:
 
 ```powershell
-groundlock setup-domain .\receipt.json --public-key $publicJwk
+groundlock setup-domain publisher.example --receipt .\receipt.json --public-key .\public.jwk
 ```
+
+`setup-domain` prints DNS records only. It exits before any DNS mutation, so the publisher still needs to install those TXT records with its DNS provider or authoritative responder.
 
 Required TXT records:
 
