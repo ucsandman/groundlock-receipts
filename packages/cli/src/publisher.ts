@@ -1,0 +1,220 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import {
+  createClaimStatusRecord,
+  createDnsCacheRecords,
+  createKeyStatusRecord,
+  createC2paInteropSidecar,
+  createLocalTrueNameResolver,
+  digestText,
+  issueVerifiedReceipt,
+  receiptStatusHash,
+  verifyTrueName,
+  type ClaimStatusRecord,
+  type DnsCacheRecords,
+  type KeyStatusRecord,
+  type ProofReceipt,
+  type SourceOfTruth,
+  type StatusResolver,
+  type TrueNameVerifyResult,
+} from "@groundlock/core";
+
+export const MAX_INPUT_BYTES = 1_000_000;
+
+export interface SignFileOptions {
+  filePath: string;
+  sourcePath: string;
+  domain: string;
+  kid: string;
+  privateKeyJwk: JsonWebKey;
+  outPath?: string;
+  contentClass?: string;
+  c2paSidecarPath?: string;
+  receiptReference?: string;
+  assetFormat?: string;
+}
+
+export interface SignFileResult {
+  state: "PASS" | "BLOCK";
+  exitCode: number;
+  receipt: ProofReceipt;
+  receiptPath: string;
+  c2paSidecarPath?: string;
+}
+
+export interface SetupDomainOptions {
+  receipt: ProofReceipt;
+  publicKeyJwk: JsonWebKey;
+  chunkSize?: number;
+}
+
+export interface SetupDomainRecords extends DnsCacheRecords {
+  mutatesDns: false;
+}
+
+export interface LocalPublishOptions extends SignFileOptions {
+  publicKeyJwk: JsonWebKey;
+  outDir: string;
+}
+
+export interface LocalPublishResult {
+  state: "PASS" | "BLOCK";
+  exitCode: number;
+  receiptPath: string;
+  statusPath: string;
+  fixturePath: string;
+  records: SetupDomainRecords;
+}
+
+interface DnsFixture {
+  domain: string;
+  txt: Record<string, string[]>;
+  status: { key: KeyStatusRecord; claim: ClaimStatusRecord };
+}
+
+export async function signFile(opts: SignFileOptions): Promise<SignFileResult> {
+  const candidate = await readTextCapped(opts.filePath);
+  const source = validateSourceOfTruth(await readJsonFileCapped(opts.sourcePath));
+  const receipt = issueVerifiedReceipt(
+    candidate,
+    source,
+    { kid: opts.kid, privateKeyJwk: opts.privateKeyJwk },
+    new Date().toISOString(),
+    {
+      signerDomain: opts.domain,
+      contentClass: opts.contentClass ?? "publisher-file",
+    },
+  );
+  const receiptPath = opts.outPath ?? `${opts.filePath}.groundlock-receipt.json`;
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(receiptPath, JSON.stringify(receipt, null, 2), "utf8");
+  if (opts.c2paSidecarPath) {
+    await mkdir(path.dirname(opts.c2paSidecarPath), { recursive: true });
+    const sidecar = createC2paInteropSidecar(receipt, {
+      assetFormat: opts.assetFormat ?? "text/plain",
+      receiptReference: opts.receiptReference ?? receiptPath,
+    });
+    await writeFile(opts.c2paSidecarPath, JSON.stringify(sidecar, null, 2), "utf8");
+  }
+  return {
+    state: receipt.verdict === "pass" ? "PASS" : "BLOCK",
+    exitCode: receipt.verdict === "pass" ? 0 : 2,
+    receipt,
+    receiptPath,
+    ...(opts.c2paSidecarPath ? { c2paSidecarPath: opts.c2paSidecarPath } : {}),
+  };
+}
+
+export function setupDomainRecords(opts: SetupDomainOptions): SetupDomainRecords {
+  return { mutatesDns: false, ...createDnsCacheRecords(opts.receipt, opts.publicKeyJwk, { chunkSize: opts.chunkSize }) };
+}
+
+export async function localPublish(opts: LocalPublishOptions): Promise<LocalPublishResult> {
+  await mkdir(opts.outDir, { recursive: true });
+  const receiptFileName = safeFileName(digestText(await readTextCapped(opts.filePath))) + ".json";
+  const receiptPath = path.join(opts.outDir, "receipts", receiptFileName);
+  const signed = await signFile({ ...opts, outPath: receiptPath });
+  const receiptHash = receiptStatusHash(signed.receipt);
+  const keyStatus = createKeyStatusRecord({
+    signerDomain: opts.domain,
+    kid: opts.kid,
+    status: "active",
+    issuedAt: signed.receipt.issuedAt,
+  });
+  const claimStatus = createClaimStatusRecord({
+    receiptHash,
+    status: "active",
+    issuedAt: signed.receipt.issuedAt,
+  });
+  const statusDir = path.join(opts.outDir, "status");
+  await mkdir(statusDir, { recursive: true });
+  const statusPath = path.join(statusDir, "claim.json");
+  await writeFile(path.join(statusDir, "key.json"), JSON.stringify(keyStatus, null, 2), "utf8");
+  await writeFile(statusPath, JSON.stringify(claimStatus, null, 2), "utf8");
+
+  const records = setupDomainRecords({
+    receipt: signed.receipt,
+    publicKeyJwk: opts.publicKeyJwk,
+  });
+  const fixture: DnsFixture = {
+    domain: opts.domain,
+    txt: dnsTxtFromRecords(records),
+    status: { key: keyStatus, claim: claimStatus },
+  };
+  const fixturePath = path.join(opts.outDir, "dns-fixture.json");
+  await writeFile(fixturePath, JSON.stringify(fixture, null, 2), "utf8");
+  return { state: signed.state, exitCode: signed.exitCode, receiptPath, statusPath, fixturePath, records };
+}
+
+export async function verifyWithFixture(opts: {
+  input: string;
+  fixturePath: string;
+  domain?: string;
+}): Promise<TrueNameVerifyResult> {
+  const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
+  const contentHash = opts.input.startsWith("sha256:") ? opts.input : digestText(await readTextCapped(opts.input));
+  const statusResolver: StatusResolver = {
+    resolveKeyStatus: async () => ({ type: "found", record: fixture.status.key }),
+    resolveClaimStatus: async () => ({ type: "found", record: fixture.status.claim }),
+  };
+  return verifyTrueName(
+    contentHash,
+    opts.domain ?? fixture.domain,
+    createLocalTrueNameResolver({
+      txt: fixture.txt,
+      statusResolver,
+    }),
+  );
+}
+
+async function readTextCapped(filePath: string): Promise<string> {
+  const data = await readFile(filePath);
+  if (data.byteLength > MAX_INPUT_BYTES) throw new Error("input_too_large");
+  return data.toString("utf8");
+}
+
+async function readJsonFileCapped(filePath: string): Promise<unknown> {
+  try {
+    return JSON.parse(await readTextCapped(filePath));
+  } catch {
+    throw new Error("invalid_json");
+  }
+}
+
+function validateSourceOfTruth(value: unknown): SourceOfTruth {
+  if (!isRecord(value) || !Array.isArray(value.requiredFacts) || !Array.isArray(value.allowedFacts)) {
+    throw new Error("invalid_source_of_truth");
+  }
+  for (const fact of [...value.requiredFacts, ...value.allowedFacts]) {
+    if (!isRecord(fact) || typeof fact.label !== "string" || typeof fact.value !== "string") {
+      throw new Error("invalid_source_of_truth");
+    }
+  }
+  return value as unknown as SourceOfTruth;
+}
+
+function validateFixture(value: unknown): DnsFixture {
+  if (!isRecord(value) || typeof value.domain !== "string" || !isRecord(value.txt) || !isRecord(value.status)) {
+    throw new Error("invalid_fixture");
+  }
+  return value as unknown as DnsFixture;
+}
+
+function dnsTxtFromRecords(records: DnsCacheRecords): Record<string, string[]> {
+  const txt: Record<string, string[]> = {
+    [records.identity.name]: [records.identity.value],
+    [records.manifest.name]: [records.manifest.value],
+  };
+  for (const chunk of records.chunks) {
+    txt[chunk.name] = [chunk.value];
+  }
+  return txt;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function safeFileName(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}

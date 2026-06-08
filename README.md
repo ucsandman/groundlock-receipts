@@ -1,24 +1,112 @@
 # GroundLock
 
-A vendor-neutral non-fabrication guarantee for AI-generated business messages. Submit an AI draft plus a structured source of truth; GroundLock returns PASS or BLOCK plus a signed, re-verifiable proof receipt. Every currency-formatted ($) amount, date, percentage, and registered-pattern token in the message must trace verbatim to the source of truth, or the message is blocked.
+GroundLock Receipts are signed AI-message proof receipts stored in DNS resolver caches. A publisher can issue a PASS or BLOCK receipt for one canonicalized message, split the signed receipt into TXT-sized chunks, warm configured DNS resolver caches, and let anyone reconstruct and verify the receipt without an account.
 
-## What it proves and does not prove
-- Proves: the message contains no fabricated operational facts (currency-formatted amounts, dates, percentages, registered-pattern tokens), required facts are present, and forbidden patterns (such as invented citations) are absent. The receipt is signed (Ed25519) and re-verifiable by anyone with the public key.
-- Does not prove (v1): time of issuance (no trusted timestamp yet), the semantic correctness of a prose claim that contains no extractable token, or the accuracy of a bare number written without a currency symbol (checked only when you register a pattern for it).
+GroundLock is narrow by design: it is a non-fabrication guarantee, not a truth oracle.
 
-## Layout
-- `packages/core` - zero-dependency engine (canonicalize, extract, verify, ruleset, keys, receipt, guarantee).
-- `apps/web` - Next.js playground and `/api/verify`.
+## What it proves
 
-## Develop
-- `git clone git@github.com:ucsandman/GroundLock.git`
-- `npm install`
-- `npm test` - run the core test suite (33 tests)
-- `npm run typecheck` - typecheck both workspaces
-- `npm run dev --workspace @groundlock/web` - run the playground at http://localhost:3000
+- The GroundLock canonicalized text hash matches a signed receipt.
+- The receipt verdict is PASS or BLOCK.
+- Extracted operational facts such as currency amounts, dates, percentages, and registered patterns trace to the source of truth.
+- Required facts are present and forbidden patterns are absent.
+- The signer domain/key id, DNS cache manifest, TXT chunks, receipt hash, and status records line up.
 
-## Repository
-https://github.com/ucsandman/GroundLock
+## What it does not prove
 
-## Status
-v1 demo engine: zero-runtime-dependency core (33 passing tests), a Next.js playground plus `/api/verify`, and green typechecks and production build. No industry vertical committed. Fail-closed by design.
+- It does not independently prove that all prose is true.
+- It does not prove unmatched prose is complete.
+- It does not provide a trusted timestamp.
+- It does not mutate production DNS for you.
+- It does not replace official C2PA signing or embedding tools.
+
+## Clean clone
+
+```powershell
+git clone https://github.com/ucsandman/groundlock-receipts.git
+cd groundlock-receipts
+npm install
+npm test
+npm run typecheck
+npm run lint
+npm run build
+npm run dev --workspace @groundlock/web -- --hostname 127.0.0.1 --port 3000
+```
+
+Open `http://127.0.0.1:3000` and use the public verifier in the first viewport.
+
+## One-command local launch
+
+For a local test run that installs dependencies if needed, builds the workspaces, runs the tests, starts the verifier app, and opens the browser:
+
+```powershell
+python .\launch.py
+```
+
+Useful options:
+
+```powershell
+python .\launch.py --port 3005
+python .\launch.py --skip-tests
+python .\launch.py --skip-build --no-browser
+```
+
+The launcher fails fast if install, build, or tests fail. Use `--skip-build` or `--skip-tests` only when you intentionally want a faster local UI check.
+
+## Workspaces
+
+- `packages/core` - zero-runtime-dependency engine: canonicalization, extraction, verification, receipts, status, DNS cache manifest/chunk reconstruction, and C2PA interop projection.
+- `packages/cli` - publisher CLI and SDK for signing, DNS cache TXT output, local cache fixtures, fixture verification, and C2PA sidecar emission.
+- `apps/web` - Next.js verifier API and Show-HN-ready public site.
+
+## Common commands
+
+```powershell
+python .\launch.py
+npm test
+npm run typecheck
+npm run lint
+npm run build
+npm run dev --workspace @groundlock/web -- --hostname 127.0.0.1 --port 3000
+```
+
+## 60-second verify
+
+See [docs/quickstart-60-second-verify.md](docs/quickstart-60-second-verify.md) for a copy-paste PowerShell flow that signs a sample, writes local DNS cache TXT/status fixtures, reconstructs the receipt from TXT chunks, and verifies PASS.
+
+## API
+
+See [docs/api-reference.md](docs/api-reference.md) for `/api/verify` request/response shapes, rate limits, payload limits, and PASS/BLOCK/UNVERIFIABLE/REVOKED examples.
+
+## Architecture
+
+See [docs/architecture.md](docs/architecture.md) for the data flow across core, DNS cache manifest/chunk records, CLI, status/revocation, privacy modes, C2PA interop, and the web verifier.
+
+## Threat model
+
+See [docs/threat-model.md](docs/threat-model.md) for canonicalized-hash limits, DNS cache availability limits, attacker capabilities, fail-closed states, key rotation, revocation, C2PA interop boundaries, and private workflow leakage.
+
+## C2PA interop
+
+GroundLock composes with C2PA rather than replacing it. The current interop target is the official C2PA Technical Specification 2.4 (April 2026): https://spec.c2pa.org/specifications/specifications/2.4/specs/C2PA_Specification.html.
+
+`createC2paInteropSidecar(receipt, opts)` emits deterministic JSON metadata with a C2PA-compatible manifest projection and a GroundLock assertion reference. The sidecar includes the claim generator, canonicalized content hash plus canonicalization id, GroundLock receipt hash, signer domain/key id, content class, and a full receipt reference.
+
+This sidecar is interop metadata only. It is not an official C2PA manifest store, C2PA embed/sign workflow, JUMBF box, or replacement for C2PA tooling. Use official C2PA tools for signing and embedding content credentials; use GroundLock DNS cache records as the public reconstruction and verification layer for the receipt.
+
+```powershell
+groundlock sign .\notice.txt --source .\source.json --domain publisher.example --kid k1 --key .\private.jwk --out .\receipt.json --c2pa-sidecar .\receipt.c2pa-sidecar.json --receipt-ref https://publisher.example/receipts/notice.json --asset-format text/plain
+```
+
+## Environment
+
+`.env.example` contains every supported environment variable. The demo runs without secrets by generating an in-memory signing key per process.
+
+- `GROUNDLOCK_SIGNING_KEY_JWK` - optional stable Ed25519 private JWK, single-line JSON. Leave blank for demo-only in-memory keys.
+- `GROUNDLOCK_SIGNING_KID` - optional key id; defaults to `demo-key-1`.
+
+Never commit `.env`, `.env.local`, or real private keys.
+
+## Show HN
+
+See [docs/show-hn-draft.md](docs/show-hn-draft.md). The current draft is marked `LOCAL_DEMO_ONLY` until stable resolver-cache warming, configured resolver targets, and status endpoints are configured.

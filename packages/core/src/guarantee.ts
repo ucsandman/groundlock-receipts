@@ -1,6 +1,6 @@
-import { canonicalizeText } from "./canonicalize";
-import { verify } from "./verify";
-import type { SourceOfTruth, VerifyResult } from "./types";
+import { canonicalizeText } from "./canonicalize.js";
+import { verify } from "./verify.js";
+import type { SourceOfTruth, VerifyResult } from "./types.js";
 
 export interface Refiner {
   refine(draft: string): Promise<string>;

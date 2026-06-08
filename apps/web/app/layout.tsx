@@ -1,12 +1,15 @@
 import "./globals.css";
 import type { ReactNode } from "react";
 
-export const metadata = { title: "GroundLock", description: "Non-fabrication guarantee for AI messages" };
+export const metadata = {
+  title: "GroundLock Receipts",
+  description: "Signed AI-message receipts stored in DNS resolver caches.",
+};
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-neutral-50 text-neutral-900">{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

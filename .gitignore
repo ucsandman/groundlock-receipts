@@ -4,6 +4,8 @@ dist/
 out/
 coverage/
 *.tsbuildinfo
+__pycache__/
+.supergoal/
 .env
 .env.local
 .DS_Store

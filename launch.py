@@ -1,34 +1,16 @@
 #!/usr/bin/env python3
 """
-launch.py - one command to start GroundLock locally so you can try it.
+Launch GroundLock locally for hands-on testing.
 
-WHAT GROUNDLOCK IS (the short version):
-  You give it two things:
-    1. an AI-drafted message (e.g. a billing notice an AI wrote)
-    2. a "source of truth": the facts that message is ALLOWED to state
-       (the real balance, the real due date, the real account number, etc.)
-  GroundLock returns PASS or BLOCK, plus a signed receipt anyone can re-verify.
+The launcher checks the local toolchain, installs dependencies when needed,
+builds the workspaces, runs the test suite, starts the Next.js verifier app,
+and opens the browser to the local verifier.
 
-  It BLOCKS the message if it finds any of these:
-    - a fabricated fact: a dollar amount, date, percentage, or registered code
-      (like an account number) that is NOT in your source of truth
-    - a missing required fact (the message left out something it must include)
-    - a forbidden pattern (for example an invented legal citation)
-  Otherwise it PASSES and issues a cryptographically signed proof.
-
-  The point: an AI literally cannot send a fabricated number, date, or code
-  past it, and you get court/auditor-ready proof of every message.
-
-WHAT THIS SCRIPT DOES:
-  1. checks Node.js and npm are installed
-  2. installs dependencies if needed (npm install)
-  3. runs the core test suite once, as proof the engine works (skip: --skip-tests)
-  4. starts the web playground and opens it in your browser
-
-USAGE:
-  python launch.py                 # install if needed, test, then open the playground
-  python launch.py --skip-tests    # skip the test run, just open the playground
-  python launch.py --port 3005     # use a different port
+Usage:
+  python launch.py
+  python launch.py --port 3005
+  python launch.py --skip-tests
+  python launch.py --skip-build --no-browser
 """
 
 from __future__ import annotations
@@ -41,156 +23,202 @@ import sys
 import time
 import urllib.request
 import webbrowser
+from dataclasses import dataclass
 from pathlib import Path
+
 
 ROOT = Path(__file__).resolve().parent
 IS_WIN = os.name == "nt"
 
 
+@dataclass(frozen=True)
+class LaunchOptions:
+    host: str
+    port: int
+    skip_install: bool
+    skip_build: bool
+    skip_tests: bool
+    no_browser: bool
+
+
 def have(cmd: str) -> bool:
-    """True if a command is on PATH (also checks the .cmd shim on Windows)."""
     return shutil.which(cmd) is not None or (
-        IS_WIN and shutil.which(cmd + ".cmd") is not None
+        IS_WIN and shutil.which(f"{cmd}.cmd") is not None
     )
 
 
 def npm_argv(args: list[str]) -> list[str]:
-    """Build an npm command line. On Windows, route through cmd.exe so the npm.cmd
-    shim resolves, without enabling the shell: every argument is passed as a fixed
-    list element, so there is no shell metacharacter interpretation or injection."""
     return ["cmd", "/c", "npm", *args] if IS_WIN else ["npm", *args]
 
 
-def run_npm(args: list[str]) -> int:
-    """Run an npm command from the repo root."""
+def dev_server_argv(host: str, port: int) -> list[str]:
+    return npm_argv(
+        [
+            "run",
+            "dev",
+            "--workspace",
+            "@groundlock/web",
+            "--",
+            "--hostname",
+            host,
+            "--port",
+            str(port),
+        ]
+    )
+
+
+def browser_url(host: str, port: int) -> str:
+    browser_host = "127.0.0.1" if host in {"0.0.0.0", "::", ""} else host
+    if ":" in browser_host and not browser_host.startswith("["):
+        browser_host = f"[{browser_host}]"
+    return f"http://{browser_host}:{port}"
+
+
+def dependencies_installed() -> bool:
+    return (ROOT / "node_modules").is_dir()
+
+
+def preflight_steps(
+    options: LaunchOptions, dependencies_installed: bool
+) -> list[tuple[str, list[str]]]:
+    steps: list[tuple[str, list[str]]] = []
+    if not options.skip_install and not dependencies_installed:
+        steps.append(("install dependencies", ["install"]))
+    if not options.skip_build:
+        steps.append(("build packages", ["run", "build"]))
+    if not options.skip_tests:
+        steps.append(("run tests", ["test"]))
+    return steps
+
+
+def run_npm(label: str, args: list[str]) -> int:
     argv = npm_argv(args)
-    print("\n> " + " ".join(argv) + "\n", flush=True)
+    print(f"\n[{label}]\n> {' '.join(argv)}\n", flush=True)
     return subprocess.run(argv, cwd=str(ROOT)).returncode
 
 
-def start_dev_server(env: dict[str, str]) -> subprocess.Popen:
-    """Start the Next.js playground dev server as a child process."""
-    flags = subprocess.CREATE_NEW_PROCESS_GROUP if IS_WIN else 0
+def run_preflight(options: LaunchOptions) -> int:
+    for label, args in preflight_steps(options, dependencies_installed()):
+        exit_code = run_npm(label, args)
+        if exit_code != 0:
+            print(f"\nERROR: {label} failed with exit code {exit_code}.")
+            return exit_code
+    if options.skip_install:
+        print("Skipping dependency install (--skip-install).")
+    elif dependencies_installed():
+        print("Dependencies are already installed.")
+    if options.skip_build:
+        print("Skipping build (--skip-build).")
+    if options.skip_tests:
+        print("Skipping tests (--skip-tests).")
+    return 0
+
+
+def start_dev_server(options: LaunchOptions) -> subprocess.Popen:
+    creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if IS_WIN else 0
     return subprocess.Popen(
-        npm_argv(["run", "dev", "--workspace", "@groundlock/web"]),
+        dev_server_argv(options.host, options.port),
         cwd=str(ROOT),
-        env=env,
-        creationflags=flags,
+        creationflags=creationflags,
     )
 
 
 def stop_dev_server(proc: subprocess.Popen) -> None:
-    """Stop the dev server and any child processes it spawned (no shell)."""
-    try:
-        if IS_WIN:
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True
-            )
-        else:
-            proc.terminate()
-    except Exception:
-        pass
+    if proc.poll() is not None:
+        return
+    if IS_WIN:
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            capture_output=True,
+            text=True,
+        )
+    else:
+        proc.terminate()
 
 
 def wait_for_server(url: str, timeout: float = 120.0) -> bool:
-    """Poll the URL until it responds (Next compiles on the first request)."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(url, timeout=2) as resp:
-                if resp.status < 500:
+            with urllib.request.urlopen(url, timeout=2) as response:
+                if response.status < 500:
                     return True
         except Exception:
             time.sleep(0.7)
     return False
 
 
-def main() -> int:
+def parse_args(argv: list[str] | None = None) -> LaunchOptions:
     parser = argparse.ArgumentParser(
-        description="Launch GroundLock locally so you can test it."
+        description="Install, verify, start, and open the GroundLock local verifier."
     )
+    parser.add_argument("--host", default="127.0.0.1", help="dev server host")
+    parser.add_argument("--port", type=int, default=3000, help="dev server port")
     parser.add_argument(
-        "--port",
-        type=int,
-        default=3000,
-        help="port for the web playground (default 3000)",
+        "--skip-install",
+        action="store_true",
+        help="do not run npm install when node_modules is missing",
     )
+    parser.add_argument("--skip-build", action="store_true", help="skip npm run build")
+    parser.add_argument("--skip-tests", action="store_true", help="skip npm test")
     parser.add_argument(
-        "--skip-tests", action="store_true", help="do not run the core test suite first"
+        "--no-browser",
+        "--no-open",
+        action="store_true",
+        dest="no_browser",
+        help="start the app without opening a browser tab",
     )
-    parser.add_argument(
-        "--skip-install", action="store_true", help="do not run npm install"
+    parsed = parser.parse_args(argv)
+    return LaunchOptions(
+        host=parsed.host,
+        port=parsed.port,
+        skip_install=parsed.skip_install,
+        skip_build=parsed.skip_build,
+        skip_tests=parsed.skip_tests,
+        no_browser=parsed.no_browser,
     )
-    args = parser.parse_args()
 
-    print(__doc__)
+
+def main(argv: list[str] | None = None) -> int:
+    options = parse_args(argv)
+
+    print("GroundLock local launcher")
+    print(f"Repository: {ROOT}")
 
     if not have("node") or not have("npm"):
-        print("ERROR: Node.js and npm are required but were not found on PATH.")
-        print("Install Node 20+ from https://nodejs.org and re-run: python launch.py")
+        print("ERROR: Node.js and npm are required on PATH.")
+        print("Install Node.js 20+ and rerun: python launch.py")
         return 1
 
-    # 1. Dependencies.
-    if args.skip_install:
-        print("Skipping npm install (--skip-install).")
-    elif (ROOT / "node_modules").exists():
-        print(
-            "Dependencies already installed (node_modules present). Skipping npm install."
-        )
-    else:
-        if run_npm(["install"]) != 0:
-            print("\nERROR: npm install failed. See the output above.")
+    preflight_exit = run_preflight(options)
+    if preflight_exit != 0:
+        return preflight_exit
+
+    url = browser_url(options.host, options.port)
+    print(
+        f"\n[start web verifier]\n> {' '.join(dev_server_argv(options.host, options.port))}"
+    )
+    print(f"\nWaiting for {url}. Press Ctrl+C to stop the server.\n")
+
+    proc = start_dev_server(options)
+    try:
+        if not wait_for_server(url):
+            print(f"ERROR: dev server did not respond at {url} within 120 seconds.")
+            stop_dev_server(proc)
             return 1
 
-    # 2. Proof the engine works.
-    if args.skip_tests:
-        print("Skipping the test run (--skip-tests).")
-    else:
-        if run_npm(["test"]) == 0:
-            print("\nCore engine tests passed. The guarantee is working.")
-        else:
-            print(
-                "\nWARNING: not all core tests passed. Starting the playground anyway."
-            )
-
-    # 3. Web playground.
-    url = "http://localhost:" + str(args.port)
-    env = os.environ.copy()
-    env["PORT"] = str(args.port)
-
-    print("\nStarting the GroundLock playground. It will open at " + url)
-    print("First load can take a few seconds while Next.js compiles.")
-    print("Press Ctrl+C in this window to stop the server.\n")
-
-    proc = start_dev_server(env)
-    try:
-        if wait_for_server(url):
-            print("\nGroundLock is up. Opening " + url + " in your browser.")
-            print("\nTRY THIS:")
-            print("  1. Click 'Load fabricating example', then click 'Verify'.")
-            print("     Watch it BLOCK the fake $250 late fee, the wrong date, and the")
-            print(
-                "     invented 'section 12' citation, and still sign a proof receipt."
-            )
-            print("  2. Click 'Load clean example', then 'Verify' to see a green PASS.")
-            print(
-                "  3. Note the 'signature re-verified in your browser' line: the receipt"
-            )
-            print("     is checked client-side, proving anyone can re-verify it.\n")
+        print(f"GroundLock verifier is running at {url}")
+        if not options.no_browser:
             webbrowser.open(url)
+            print("Opened the verifier in your browser.")
         else:
-            print("\nThe server did not respond at " + url + " within the timeout.")
-            print(
-                "It may still be compiling. Try opening "
-                + url
-                + " manually, or check the logs above."
-            )
-        proc.wait()
+            print("Browser opening skipped (--no-browser).")
+        return proc.wait()
     except KeyboardInterrupt:
-        print("\nStopping the server...")
+        print("\nStopping GroundLock verifier...")
+        return 0
     finally:
         stop_dev_server(proc)
-    return 0
 
 
 if __name__ == "__main__":

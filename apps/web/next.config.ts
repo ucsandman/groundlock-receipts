@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 const nextConfig: NextConfig = {
+  agentRules: false,
+  devIndicators: false,
   transpilePackages: ["@groundlock/core"],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   webpack(config: any, { isServer }: { isServer: boolean }) {
@@ -10,7 +13,7 @@ const nextConfig: NextConfig = {
       // Replace node:crypto with an empty module on the browser bundle.
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { NormalModuleReplacementPlugin } = require("webpack");
-      const stubPath = require("path").resolve(__dirname, "__stubs__/node-crypto.js");
+      const stubPath = path.resolve(__dirname, "__stubs__/node-crypto.js");
       config.plugins = [
         ...(config.plugins ?? []),
         new NormalModuleReplacementPlugin(/^node:crypto$/, stubPath),

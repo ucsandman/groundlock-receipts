@@ -1,6 +1,16 @@
-import { canonicalizeText } from "./canonicalize";
-import { extractMoney, extractDates, extractPercentages, extractPattern, normalizeMoney } from "./extract";
-import type { SourceOfTruth, Violation, VerifyResult, RequiredFact } from "./types";
+import { canonicalizeText, digestText } from "./canonicalize.js";
+import { extractMoney, extractDates, extractPercentages, extractPattern, normalizeMoney } from "./extract.js";
+import type {
+  AllowedFact,
+  GroundedClaim,
+  GroundedClaimKind,
+  GroundingTrace,
+  RequiredFact,
+  SourceOfTruth,
+  UngroundedClaim,
+  Violation,
+  VerifyResult,
+} from "./types.js";
 
 /** Heuristic signal that legal-citation language is present (adapted from letter-cannon). */
 export const DEFAULT_CITATION_SIGNAL =
@@ -12,6 +22,108 @@ function escapeRegExp(s: string): string {
 
 function wordBoundary(term: string, flags: string): RegExp {
   return new RegExp("\\b" + escapeRegExp(term) + "\\b", flags);
+}
+
+type Fact = AllowedFact | RequiredFact;
+type ExtractedToken = { raw: string; normalized: string };
+type ExtractTokens = (text: string) => ExtractedToken[];
+
+interface IndexedFact {
+  label: string;
+  value: string;
+}
+
+function allTraceFacts(source: SourceOfTruth): Fact[] {
+  return [...source.allowedFacts, ...source.requiredFacts];
+}
+
+function firstFactByToken(facts: Fact[], extract: ExtractTokens): Map<string, IndexedFact> {
+  const out = new Map<string, IndexedFact>();
+  for (const fact of facts) {
+    for (const token of extract(canonicalizeText(fact.value))) {
+      if (!out.has(token.normalized)) {
+        out.set(token.normalized, { label: fact.label, value: fact.value });
+      }
+    }
+  }
+  return out;
+}
+
+function toGroundedClaim(kind: GroundedClaimKind, token: ExtractedToken, fact: IndexedFact): GroundedClaim {
+  return {
+    kind,
+    token: token.raw,
+    normalized: token.normalized,
+    sourceLabel: fact.label,
+    sourceValue: fact.value,
+    sourceValueHash: digestText(fact.value),
+  };
+}
+
+function toUngroundedClaim(
+  kind: GroundedClaimKind,
+  label: string,
+  token: ExtractedToken,
+): UngroundedClaim {
+  return {
+    kind,
+    label,
+    token: token.raw,
+    normalized: token.normalized,
+  };
+}
+
+function traceKind(
+  text: string,
+  kind: GroundedClaimKind,
+  label: string,
+  facts: Fact[],
+  extract: ExtractTokens,
+): GroundingTrace {
+  const allowed = firstFactByToken(facts, extract);
+  const groundedClaims: GroundedClaim[] = [];
+  const ungrounded: UngroundedClaim[] = [];
+  for (const token of extract(text)) {
+    const fact = allowed.get(token.normalized);
+    if (fact) {
+      groundedClaims.push(toGroundedClaim(kind, token, fact));
+    } else {
+      ungrounded.push(toUngroundedClaim(kind, label, token));
+    }
+  }
+  return { groundedClaims, ungrounded };
+}
+
+function mergeTrace(into: GroundingTrace, from: GroundingTrace): void {
+  into.groundedClaims.push(...from.groundedClaims);
+  into.ungrounded.push(...from.ungrounded);
+}
+
+export function traceGrounding(candidate: string, source: SourceOfTruth): GroundingTrace {
+  const text = canonicalizeText(candidate);
+  const facts = allTraceFacts(source);
+  const ext = source.extract ?? { money: true, dates: true, percentages: true };
+  const trace: GroundingTrace = { groundedClaims: [], ungrounded: [] };
+
+  if (ext.money !== false) {
+    mergeTrace(trace, traceKind(text, "money", "money", facts, extractMoney));
+  }
+  if (ext.dates !== false) {
+    mergeTrace(trace, traceKind(text, "date", "date", facts, extractDates));
+  }
+  if (ext.percentages !== false) {
+    mergeTrace(trace, traceKind(text, "percentage", "percentage", facts, extractPercentages));
+  }
+  for (const rp of ext.patterns ?? []) {
+    const extractRegisteredPattern = (value: string): ExtractedToken[] =>
+      extractPattern(value, rp.pattern).map((raw) => ({
+        raw,
+        normalized: canonicalizeText(raw),
+      }));
+    mergeTrace(trace, traceKind(text, "pattern", rp.label, facts, extractRegisteredPattern));
+  }
+
+  return trace;
 }
 
 /**
@@ -78,44 +190,8 @@ export function verify(candidate: string, source: SourceOfTruth): VerifyResult {
     }
 
     // 3. Positive entailment: every extracted operational token must trace to an allowed fact.
-    const ext = source.extract ?? { money: true, dates: true, percentages: true };
-    const corpus = canonicalizeText(
-      [...source.allowedFacts, ...source.requiredFacts].map((f) => f.value).join("\n"),
-    );
-
-    if (ext.money !== false) {
-      const allowed = new Set(extractMoney(corpus).map((m) => m.normalized));
-      for (const m of extractMoney(text)) {
-        if (!allowed.has(m.normalized)) {
-          violations.push({ code: "fabricated_fact", label: "money", detail: m.raw });
-        }
-      }
-    }
-    if (ext.dates !== false) {
-      const allowed = new Set(extractDates(corpus).map((d) => d.normalized));
-      for (const d of extractDates(text)) {
-        if (!allowed.has(d.normalized)) {
-          violations.push({ code: "fabricated_fact", label: "date", detail: d.raw });
-        }
-      }
-    }
-    if (ext.percentages !== false) {
-      const allowed = new Set(extractPercentages(corpus).map((p) => p.normalized));
-      for (const p of extractPercentages(text)) {
-        if (!allowed.has(p.normalized)) {
-          violations.push({ code: "fabricated_fact", label: "percentage", detail: p.raw });
-        }
-      }
-    }
-    for (const rp of ext.patterns ?? []) {
-      // Build the allowed set by extracting the same pattern from the corpus, so a
-      // fabricated token cannot pass merely by being a substring of an unrelated fact.
-      const allowed = new Set(extractPattern(corpus, rp.pattern).map((m) => canonicalizeText(m)));
-      for (const match of extractPattern(text, rp.pattern)) {
-        if (!allowed.has(canonicalizeText(match))) {
-          violations.push({ code: "fabricated_fact", label: rp.label, detail: match });
-        }
-      }
+    for (const claim of traceGrounding(text, source).ungrounded) {
+      violations.push({ code: "fabricated_fact", label: claim.label, detail: claim.token });
     }
 
     return { verdict: violations.length === 0 ? "pass" : "block", violations };

@@ -1,7 +1,10 @@
 {
-  "name": "@groundlock/core",
+  "name": "@groundlock/cli",
   "version": "0.1.0",
   "type": "module",
+  "bin": {
+    "groundlock": "./dist/cli.js"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -11,16 +14,17 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "npm run build --workspace @groundlock/core && vitest run",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@groundlock/core": "0.1.0"
+  },
   "devDependencies": {
+    "@types/node": "20.19.42",
     "typescript": "5.9.3",
-    "vitest": "4.1.8",
-    "@types/node": "20.19.42"
+    "vitest": "4.1.8"
   }
 }

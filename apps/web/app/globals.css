@@ -1,1 +1,36 @@
 @import "tailwindcss";
+
+:root {
+  --surface: #f3f7ec;
+  --paper: #fffdf5;
+  --ink: #171510;
+  --muted-ink: #575044;
+  --line: #171510;
+  --ledger: #dfe8d2;
+  --acid: #b7ff2a;
+  --acid-strong: #7dcc00;
+  --brass: #a9792b;
+  --danger: #c12f24;
+  --blueprint: #dbe8ef;
+  --font-display: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-body: Aptos, "Segoe UI", system-ui, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background:
+    linear-gradient(90deg, rgb(23 21 16 / 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, rgb(23 21 16 / 0.04) 1px, transparent 1px),
+    var(--surface);
+  background-size: 44px 44px;
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+::selection {
+  background: var(--acid);
+  color: var(--ink);
+}
