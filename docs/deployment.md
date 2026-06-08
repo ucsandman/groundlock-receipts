@@ -178,14 +178,14 @@ python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fi
 
 `--health-url` must be the deployed verifier root URL or its exact `/api/health` URL. Nested app paths are rejected so the audit does not probe `<path>/api/health` or compare homepage metadata against the wrong launch URL.
 
-`--dns-fixture` must be the fixture generated for the same launch domain and the same `--file-or-hash` demo input. The audit checks the fixture JSON before external requests and requires matching `domain`, a valid unambiguous identity TXT whose `kid` matches the manifest key, a valid unambiguous manifest TXT for the demo hash whose signer domain matches the launch domain, every valid unambiguous chunk TXT declared by the manifest `n=<count>`, and valid active `groundlock-status/v1` key/claim status entries whose subjects match the manifest key and receipt hash.
+`--dns-fixture` must be the fixture generated for the same launch domain and the same `--file-or-hash` demo input. The audit checks the fixture JSON before external requests and requires matching `domain`, a valid unambiguous identity TXT whose `kid` matches the manifest key, a valid unambiguous manifest TXT for the demo hash whose signer domain matches the launch domain, every valid unambiguous chunk TXT declared by the manifest `n=<count>`, reconstructed chunk payload that matches manifest `ph`, and valid active `groundlock-status/v1` key/claim status entries whose subjects match the manifest key and receipt hash.
 
 The audit exits non-zero if:
 
 - the git worktree is dirty
 - `docs/show-hn-draft.md` still contains `LOCAL_DEMO_ONLY`
 - the launch URLs are not public HTTPS URLs, include credentials/query/fragment suffixes, contain malformed DNS labels, use a nested health URL path, or the signer domain is still a placeholder/local host or IP address
-- the local `dns-fixture.json` is missing, malformed, for a different domain, for a different demo hash, lacks identity, manifest, declared chunk, key status, or claim status entries, has malformed or ambiguous identity/manifest/chunk TXT records, has malformed status records, has a manifest signer domain that does not match the launch domain, has an identity `kid` that does not match the manifest key, or has status records that do not match the manifest key/receipt hash
+- the local `dns-fixture.json` is missing, malformed, for a different domain, for a different demo hash, lacks identity, manifest, declared chunk, key status, or claim status entries, has malformed or ambiguous identity/manifest/chunk TXT records, has chunk payload that does not match manifest `ph`, has malformed status records, has a manifest signer domain that does not match the launch domain, has an identity `kid` that does not match the manifest key, or has status records that do not match the manifest key/receipt hash
 - the latest GitHub Actions `CI` run on `main` is not successful for the current git `HEAD`
 - the deployed `/api/health` response is missing, not `ok`, still in demo mode, missing signer domain, site URL, DoH endpoint, or status base URL configuration, or missing bundled status records when the status base URL shares the verifier origin
 - the deployed homepage title, canonical URL, Open Graph URL, or share image metadata still points at localhost, a placeholder, or a different launch origin

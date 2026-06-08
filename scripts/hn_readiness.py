@@ -536,11 +536,14 @@ def validate_fixture_txt_records(
             failures.append(
                 "fixture identity TXT record does not match cache manifest key"
             )
-        failures.extend(
-            validate_manifest_chunks(
-                normalized, expected_manifest_name, manifest.chunk_count
-            )
+        chunk_failures, payload = validate_manifest_chunks(
+            normalized, expected_manifest_name, manifest.chunk_count
         )
+        failures.extend(chunk_failures)
+        if payload is not None and digest_utf8(payload) != manifest.payload_hash:
+            failures.append(
+                "fixture DNS cache payload hash does not match cache manifest"
+            )
 
     return failures, manifest
 
@@ -637,15 +640,16 @@ def canonical_json(value: object) -> str:
 
 def validate_manifest_chunks(
     txt: dict[str, list[str]], manifest_name: str, chunk_count: int
-) -> list[str]:
+) -> tuple[list[str], str | None]:
     failures = []
+    chunks: list[str] = []
     for index in range(chunk_count):
         chunk_name = f"c{index}.{manifest_name}"
         values = txt.get(chunk_name)
         if not values:
             failures.append(f"fixture cache chunk TXT record is missing: {chunk_name}")
             continue
-        error = validate_fixture_chunk(values, index)
+        error, data = validate_fixture_chunk(values, index)
         if error == "malformed":
             failures.append(
                 f"fixture cache chunk TXT record is malformed: {chunk_name}"
@@ -654,10 +658,14 @@ def validate_manifest_chunks(
             failures.append(
                 f"fixture cache chunk TXT record is ambiguous: {chunk_name}"
             )
-    return failures
+        elif data is not None:
+            chunks.append(data)
+    return failures, "".join(chunks) if not failures else None
 
 
-def validate_fixture_chunk(values: list[str], expected_index: int) -> str | None:
+def validate_fixture_chunk(
+    values: list[str], expected_index: int
+) -> tuple[str | None, str | None]:
     data_values = set()
     malformed = False
     for value in values:
@@ -667,10 +675,10 @@ def validate_fixture_chunk(values: list[str], expected_index: int) -> str | None
             continue
         data_values.add(data)
     if len(data_values) == 1:
-        return None
+        return None, next(iter(data_values))
     if not data_values and malformed:
-        return "malformed"
-    return "ambiguous"
+        return "malformed", None
+    return "ambiguous", None
 
 
 def parse_fixture_chunk_data(value: str, expected_index: int) -> str | None:
@@ -777,7 +785,11 @@ def content_hash_for_input(file_or_hash: str) -> str:
 
 def digest_text(value: str) -> str:
     canonical = canonicalize_text(value)
-    digest = hashlib.sha256(canonical.encode("utf-8")).digest()
+    return digest_utf8(canonical)
+
+
+def digest_utf8(value: str) -> str:
+    digest = hashlib.sha256(value.encode("utf-8")).digest()
     encoded = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
     return f"sha256:{encoded}"
 

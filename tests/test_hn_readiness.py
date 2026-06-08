@@ -50,6 +50,20 @@ def active_status_records(
     }
 
 
+def manifest_record(
+    receipt_hash: str = "abc",
+    payload: str = "abc",
+    chunk_count: int = 1,
+    signer_domain: str = "receipts.groundlock.dev",
+    kid: str = "k1",
+) -> str:
+    payload_hash = hn_readiness.digest_utf8(payload).removeprefix("sha256:")
+    return (
+        f"gdm1 rh={receipt_hash} ph={payload_hash} n={chunk_count} "
+        f"key={signer_domain}#{kid}"
+    )
+
+
 class HnReadinessTests(unittest.TestCase):
     def test_show_hn_draft_fails_while_marked_local_demo_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -306,7 +320,7 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1")
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                                manifest_record()
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdc1 i=0 d=abc"
@@ -432,7 +446,7 @@ class HnReadinessTests(unittest.TestCase):
                                         identity_record("k1")
                                     ],
                                     "gl-abc._groundlock.receipts.groundlock.dev": [
-                                        "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                                        manifest_record()
                                     ],
                                     "c0.gl-abc._groundlock.receipts.groundlock.dev": chunk_values,
                                 },
@@ -450,6 +464,39 @@ class HnReadinessTests(unittest.TestCase):
                 self.assertIn("chunk TXT", result.detail)
                 self.assertIn(expected_detail, result.detail)
 
+    def test_dns_fixture_preflight_rejects_payload_hash_mismatch(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "receipts.groundlock.dev",
+                        "txt": {
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1")
+                            ],
+                            "gl-abc._groundlock.receipts.groundlock.dev": [
+                                manifest_record(payload="other-payload")
+                            ],
+                            "c0.gl-abc._groundlock.receipts.groundlock.dev": [
+                                "gdc1 i=0 d=abc"
+                            ],
+                        },
+                        "status": active_status_records(),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("payload hash", result.detail)
+
     def test_dns_fixture_preflight_rejects_malformed_status_record_shape(
         self,
     ) -> None:
@@ -464,7 +511,7 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1")
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                                manifest_record()
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdc1 i=0 d=abc"
@@ -512,7 +559,7 @@ class HnReadinessTests(unittest.TestCase):
                         "txt": {
                             "_truename.receipts.groundlock.dev": ["glt1 kid=k1"],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                                manifest_record()
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdc1 i=0 d=abc"
@@ -565,7 +612,7 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1", "def"),
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                                manifest_record()
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdc1 i=0 d=abc"
@@ -617,7 +664,7 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("other-key")
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                                manifest_record()
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdc1 i=0 d=abc"
@@ -669,7 +716,7 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1")
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdm1 rh=abc ph=def n=1 key=other.groundlock.dev#k1"
+                                manifest_record(signer_domain="other.groundlock.dev")
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdc1 i=0 d=abc"
@@ -807,7 +854,7 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1")
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdm1 rh=receipt-abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                                manifest_record(receipt_hash="receipt-abc")
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdc1 i=0 d=abc"
@@ -857,7 +904,7 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1")
                             ],
                             "gl-abc._groundlock.receipts.groundlock.dev": [
-                                "gdm1 rh=abc ph=def n=2 key=receipts.groundlock.dev#k1"
+                                manifest_record(chunk_count=2)
                             ],
                             "c0.gl-abc._groundlock.receipts.groundlock.dev": [
                                 "gdc1 i=0 d=abc"
@@ -912,7 +959,7 @@ class HnReadinessTests(unittest.TestCase):
                                 identity_record("k1")
                             ],
                             f"gl-{manifest_label}._groundlock.receipts.groundlock.dev": [
-                                "gdm1 rh=abc ph=def n=1 key=receipts.groundlock.dev#k1"
+                                manifest_record()
                             ],
                             f"c0.gl-{manifest_label}._groundlock.receipts.groundlock.dev": [
                                 "gdc1 i=0 d=abc"
