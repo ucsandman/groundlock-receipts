@@ -508,6 +508,10 @@ def validate_fixture_txt_records(
         )
 
     if manifest is not None:
+        if manifest.signer_domain != expected_domain:
+            failures.append(
+                "fixture cache manifest signer domain does not match launch domain"
+            )
         if identity_kid is not None and identity_kid != manifest.kid:
             failures.append(
                 "fixture identity TXT record does not match cache manifest key"
