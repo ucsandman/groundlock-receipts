@@ -369,7 +369,9 @@ def build_web_verify_body(file_or_hash: str) -> dict[str, str]:
     return {"fileText": data.decode("utf-8")}
 
 
-def validate_web_verify_body(body: str) -> CheckResult:
+def validate_web_verify_body(
+    body: str, expected_domain: str, expected_content_hash: str
+) -> CheckResult:
     try:
         data = json.loads(body)
     except json.JSONDecodeError as exc:
@@ -385,13 +387,40 @@ def validate_web_verify_body(body: str) -> CheckResult:
             False,
             f"deployed /api/verify returned state={state} code={code}",
         )
-    return CheckResult("web-verify", True, "deployed /api/verify returned PASS")
+    summary = data.get("receiptSummary")
+    if not isinstance(summary, dict):
+        return CheckResult(
+            "web-verify", False, "deployed /api/verify did not return receiptSummary"
+        )
+    failures = []
+    signer_domain = summary.get("signerDomain")
+    if not isinstance(signer_domain, str) or normalize_domain(
+        signer_domain
+    ) != normalize_domain(expected_domain):
+        failures.append("receiptSummary signerDomain does not match launch domain")
+    if summary.get("contentHash") != expected_content_hash:
+        failures.append("receiptSummary contentHash does not match demo hash")
+    if summary.get("verdict") != "pass":
+        failures.append("receiptSummary verdict is not pass")
+    receipt_hash = summary.get("receiptHash")
+    if not isinstance(receipt_hash, str) or not receipt_hash.startswith("sha256:"):
+        failures.append("receiptSummary receiptHash is missing")
+    if failures:
+        return CheckResult("web-verify", False, "; ".join(failures))
+    return CheckResult(
+        "web-verify",
+        True,
+        "deployed /api/verify returned PASS for launch domain and demo hash",
+    )
 
 
-def check_web_verify(url: str, file_or_hash: str, timeout: float = 10.0) -> CheckResult:
+def check_web_verify(
+    url: str, file_or_hash: str, domain: str, timeout: float = 10.0
+) -> CheckResult:
     endpoint = verify_endpoint(url)
     try:
         payload = json.dumps(build_web_verify_body(file_or_hash)).encode("utf-8")
+        expected_content_hash = content_hash_for_input(file_or_hash)
     except Exception as exc:
         return CheckResult("web-verify", False, f"could not build request body: {exc}")
 
@@ -414,7 +443,7 @@ def check_web_verify(url: str, file_or_hash: str, timeout: float = 10.0) -> Chec
     except Exception as exc:
         return CheckResult("web-verify", False, f"{endpoint} failed: {exc}")
 
-    return validate_web_verify_body(body)
+    return validate_web_verify_body(body, domain, expected_content_hash)
 
 
 def check_dns_fixture(path: str, domain: str, file_or_hash: str) -> CheckResult:
@@ -1084,7 +1113,7 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
         check_live_receipt(
             args.file_or_hash, args.domain, args.status_base_url, args.doh_endpoint
         ),
-        check_web_verify(args.health_url, args.file_or_hash),
+        check_web_verify(args.health_url, args.file_or_hash, args.domain),
     ]
 
 

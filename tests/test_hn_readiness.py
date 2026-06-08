@@ -378,17 +378,56 @@ class HnReadinessTests(unittest.TestCase):
             )
 
     def test_web_verify_response_requires_pass(self) -> None:
+        summary = {
+            "signerDomain": "receipts.groundlock.dev",
+            "contentHash": "sha256:abc",
+            "verdict": "pass",
+            "receiptHash": "sha256:receipt",
+        }
         ok = hn_readiness.validate_web_verify_body(
-            json.dumps({"state": "PASS", "code": "verified"})
+            json.dumps(
+                {"state": "PASS", "code": "verified", "receiptSummary": summary}
+            ),
+            "receipts.groundlock.dev",
+            "sha256:abc",
         )
         bad = hn_readiness.validate_web_verify_body(
-            json.dumps({"state": "UNVERIFIABLE", "code": "dns_txt_missing"})
+            json.dumps({"state": "UNVERIFIABLE", "code": "dns_txt_missing"}),
+            "receipts.groundlock.dev",
+            "sha256:abc",
         )
 
         self.assertTrue(ok.ok)
         self.assertEqual(ok.name, "web-verify")
         self.assertFalse(bad.ok)
         self.assertIn("UNVERIFIABLE", bad.detail)
+
+    def test_web_verify_response_requires_matching_receipt_summary(self) -> None:
+        base_summary = {
+            "signerDomain": "receipts.groundlock.dev",
+            "contentHash": "sha256:abc",
+            "verdict": "pass",
+            "receiptHash": "sha256:receipt",
+        }
+        cases = [
+            (None, "receiptSummary"),
+            ({**base_summary, "signerDomain": "other.groundlock.dev"}, "signerDomain"),
+            ({**base_summary, "contentHash": "sha256:other"}, "contentHash"),
+            ({**base_summary, "verdict": "block"}, "verdict"),
+            ({**base_summary, "receiptHash": "receipt"}, "receiptHash"),
+        ]
+        for summary, expected_detail in cases:
+            with self.subTest(expected_detail=expected_detail):
+                body = {"state": "PASS", "code": "verified"}
+                if summary is not None:
+                    body["receiptSummary"] = summary
+
+                result = hn_readiness.validate_web_verify_body(
+                    json.dumps(body), "receipts.groundlock.dev", "sha256:abc"
+                )
+
+                self.assertFalse(result.ok)
+                self.assertIn(expected_detail, result.detail)
 
     def test_dns_fixture_preflight_accepts_launch_domain_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1255,12 +1294,17 @@ class HnReadinessTests(unittest.TestCase):
             mock.patch.object(hn_readiness, "check_live_receipt", return_value=ok),
             mock.patch.object(
                 hn_readiness, "check_web_verify", return_value=web_verify
-            ),
+            ) as check_web_verify,
         ):
             results = hn_readiness.run_checks(args)
 
         self.assertIn("web-verify", [result.name for result in results])
         self.assertEqual(results[-1].name, "web-verify")
+        check_web_verify.assert_called_once_with(
+            "https://receipts.groundlock.dev",
+            "sha256:abc123",
+            "receipts.groundlock.dev",
+        )
 
     def test_builds_local_check_live_command_without_shell(self) -> None:
         argv = hn_readiness.build_check_live_argv(
