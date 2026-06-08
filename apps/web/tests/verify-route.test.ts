@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { POST } from "../app/api/verify/route";
 import { RATE_LIMIT_MAX, demoInputs, MAX_VERIFY_BYTES } from "../lib/public-verifier";
+import { resetPublicVerifierRateLimitForTest } from "../lib/rate-limit";
 
 async function postJson(body: unknown, headers: Record<string, string> = {}) {
   const response = await POST(
@@ -14,6 +15,14 @@ async function postJson(body: unknown, headers: Record<string, string> = {}) {
 }
 
 describe("public verifier route", () => {
+  beforeEach(() => {
+    resetPublicVerifierRateLimitForTest();
+  });
+
+  afterEach(() => {
+    resetPublicVerifierRateLimitForTest();
+  });
+
   it("returns PASS, BLOCK, REVOKED, and UNVERIFIABLE public states", async () => {
     const inputs = demoInputs();
 
@@ -87,6 +96,7 @@ describe("public verifier route", () => {
       last = await postJson({ hash: `sha256:rateLimit${i}` }, { "x-forwarded-for": `203.0.113.${i}` });
     }
     expect(last?.response.status).toBe(429);
+    expect(Number(last?.response.headers.get("retry-after"))).toBeGreaterThan(0);
     expect(last?.json).toEqual(expect.objectContaining({ state: "UNVERIFIABLE", code: "rate_limited" }));
   });
 });

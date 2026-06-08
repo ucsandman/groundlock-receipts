@@ -15,12 +15,16 @@ Copy `.env.example` only as a placeholder reference. Do not commit a real `.env`
 GROUNDLOCK_SIGNER_DOMAIN=publisher.example
 GROUNDLOCK_DOH_ENDPOINT=https://cloudflare-dns.com/dns-query
 GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status
+GROUNDLOCK_RATE_LIMIT_MAX=240
+GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000
 ```
 
 `GROUNDLOCK_DOH_ENDPOINT` is optional and defaults to Cloudflare DoH. The DoH response must include the DNSSEC AD signal; otherwise the verifier fails closed with `dnssec_not_validated`.
 
 `GROUNDLOCK_STATUS_BASE_URL` is required when `GROUNDLOCK_SIGNER_DOMAIN` is set.
 The status base URL should be a publisher-controlled HTTPS origin. It is used only for public key and claim status; it is not a signing service and not a timestamp authority.
+
+`GROUNDLOCK_RATE_LIMIT_MAX` and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS` are optional. Defaults are `240` verifier requests per `60000` ms per app instance. The public verifier intentionally does not trust spoofable forwarding headers for client identity, so put stricter per-client throttling at a trusted edge proxy if needed.
 
 ## Container deployment
 

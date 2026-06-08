@@ -2,13 +2,12 @@ import { NextResponse } from "next/server";
 import { digestText } from "@groundlock/core";
 import {
   MAX_VERIFY_BYTES,
-  RATE_LIMIT_MAX,
-  RATE_LIMIT_WINDOW_MS,
   WHAT_IT_DOES_NOT_PROVE,
   WHAT_IT_PROVES,
   summarizeReceipt,
   verifyPublicContentHash,
 } from "../../../lib/public-verifier";
+import { checkPublicVerifierRateLimit } from "../../../lib/rate-limit";
 
 export const runtime = "nodejs";
 const MAX_REQUEST_BYTES = MAX_VERIFY_BYTES + 16 * 1024;
@@ -22,8 +21,6 @@ interface VerifyRequestBody {
   remoteUrl?: unknown;
 }
 
-const rateBuckets = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_KEY = "public-verifier";
 const HASH_RE = /^sha256:[A-Za-z0-9_-]{8,}$/;
 
 export async function POST(req: Request) {
@@ -105,6 +102,10 @@ async function publicVerify(body: VerifyRequestBody) {
 }
 
 function publicError(code: string, status: number) {
+  return publicErrorWithHeaders(code, status);
+}
+
+function publicErrorWithHeaders(code: string, status: number, headers?: HeadersInit) {
   return NextResponse.json(
     {
       state: "UNVERIFIABLE",
@@ -115,27 +116,16 @@ function publicError(code: string, status: number) {
       receiptSummary: null,
       timingMs: 0,
     },
-    { status },
+    { status, headers },
   );
 }
 
 function rateLimit(_req: Request) {
-  const now = Date.now();
-  pruneRateBuckets(now);
-  const bucket = rateBuckets.get(RATE_LIMIT_KEY);
-  if (!bucket || bucket.resetAt <= now) {
-    rateBuckets.set(RATE_LIMIT_KEY, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return null;
-  }
-  bucket.count += 1;
-  if (bucket.count > RATE_LIMIT_MAX) {
-    return publicError("rate_limited", 429);
+  const decision = checkPublicVerifierRateLimit();
+  if (decision.limited) {
+    return publicErrorWithHeaders("rate_limited", 429, {
+      "Retry-After": String(decision.retryAfterSeconds ?? 1),
+    });
   }
   return null;
-}
-
-function pruneRateBuckets(now: number) {
-  for (const [key, bucket] of rateBuckets) {
-    if (bucket.resetAt <= now) rateBuckets.delete(key);
-  }
 }

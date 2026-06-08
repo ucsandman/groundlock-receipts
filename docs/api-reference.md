@@ -53,10 +53,12 @@ Remote URL verification is intentionally rejected:
 ### Limits
 
 - `fileText` maximum: 256 KiB.
-- Rate limit: 20 public verifier requests per 60 seconds in the demo bucket.
+- Rate limit: defaults to 240 public verifier requests per 60 seconds per app instance.
 - Remote URL fetching is not supported by the public endpoint.
 - Publisher signing is not supported by the public endpoint.
 - Unknown, malformed, missing, or oversized input fails closed.
+
+The verifier uses one in-memory public bucket by default because spoofable forwarding headers are not trusted as client identity. Tune `GROUNDLOCK_RATE_LIMIT_MAX` and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS` at the deployment edge for launch traffic. A limited response returns HTTP `429` with `Retry-After`.
 
 ### Response shape
 
