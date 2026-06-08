@@ -292,15 +292,20 @@ describe("CLI entrypoint", () => {
     const out = stdout.mock.calls.map((call) => String(call[0])).join("");
     const summary = JSON.parse(await readFile(path.join(kitDir, "launch-summary.json"), "utf8"));
     const webEnv = await readFile(path.join(kitDir, "web.env"), "utf8");
+    const runbook = await readFile(path.join(kitDir, "runbook.md"), "utf8");
     const checksums = await readFile(path.join(kitDir, "checksums.txt"), "utf8");
     expect(out).toContain("launch-kit");
     expect(out).toContain("content-hash");
     expect(out).toContain("checksums");
     expect(summary.contentHash).toBe(digestText(await readFile(filePath, "utf8")));
     expect(summary.receiptVerdict).toBe("pass");
+    expect(summary.artifacts.runbook).toBe("runbook.md");
     expect(summary.artifacts.checksums).toBe("checksums.txt");
     expect(summary.artifactSha256.dnsFixture).toMatch(/^sha256:[A-Za-z0-9_-]+$/);
+    expect(summary.artifactSha256.runbook).toMatch(/^sha256:[A-Za-z0-9_-]+$/);
+    expect(runbook).toContain("GroundLock launch runbook");
     expect(checksums).toContain("dns-fixture.json");
+    expect(checksums).toContain("runbook.md");
     expect(webEnv).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
   });
 

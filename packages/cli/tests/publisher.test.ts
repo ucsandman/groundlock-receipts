@@ -165,6 +165,7 @@ describe("publisher SDK", () => {
     const statusRecords = await readFile(kit.artifacts.statusRecords, "utf8");
     const summary = JSON.parse(await readFile(kit.artifacts.launchSummary, "utf8"));
     const hnReadiness = await readFile(kit.artifacts.hnReadiness, "utf8");
+    const runbook = await readFile(kit.artifacts.runbook, "utf8");
     const checksums = await readFile(kit.artifacts.checksums, "utf8");
 
     expect(kit.contentHash).toBe(summary.contentHash);
@@ -176,6 +177,7 @@ describe("publisher SDK", () => {
     expect(statusRecords).toContain('"kind": "claim"');
     expect(summary.schema).toBe("groundlock-launch-kit/v1");
     expect(summary.receiptVerdict).toBe("pass");
+    expect(summary.artifacts.runbook).toBe("runbook.md");
     expect(summary.artifacts.checksums).toBe("checksums.txt");
     const checksumArtifacts = [
       ["dnsFixture", kit.artifacts.dnsFixture, "dns-fixture.json"],
@@ -183,6 +185,7 @@ describe("publisher SDK", () => {
       ["webEnv", kit.artifacts.webEnv, "web.env"],
       ["statusRecords", kit.artifacts.statusRecords, "status-records.json"],
       ["hnReadiness", kit.artifacts.hnReadiness, "hn-readiness.ps1"],
+      ["runbook", kit.artifacts.runbook, "runbook.md"],
     ] as const;
     for (const [key, filePath, fileName] of checksumArtifacts) {
       expect(summary.artifactSha256[key]).toBe(await fileSha256(filePath));
@@ -195,7 +198,12 @@ describe("publisher SDK", () => {
     expect(hnReadiness).toContain("could_not_find_groundlock_repo_root");
     expect(hnReadiness).toContain("scripts\\hn_readiness.py");
     expect(hnReadiness).toContain("--evidence-out");
-    expect(`${zone}\n${webEnv}\n${statusRecords}\n${JSON.stringify(summary)}\n${hnReadiness}\n${checksums}`).not.toContain("privateKeyJwk");
+    expect(runbook).toContain("# GroundLock launch runbook");
+    expect(runbook).toContain("groundlock warm-cache .\\dns-fixture.json");
+    expect(runbook).toContain('groundlock check-live "');
+    expect(runbook).toContain(".\\hn-readiness.ps1");
+    expect(runbook).toContain("Repository: ucsandman/groundlock-receipts");
+    expect(`${zone}\n${webEnv}\n${statusRecords}\n${JSON.stringify(summary)}\n${hnReadiness}\n${runbook}\n${checksums}`).not.toContain("privateKeyJwk");
   });
 
   it("refuses to create a Hacker News launch kit for a BLOCK receipt", async () => {

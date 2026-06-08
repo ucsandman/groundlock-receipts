@@ -132,6 +132,7 @@ export interface LaunchKitArtifacts {
   statusRecords: string;
   launchSummary: string;
   hnReadiness: string;
+  runbook: string;
   checksums: string;
 }
 
@@ -141,6 +142,7 @@ const CHECKSUMMED_LAUNCH_ARTIFACTS = [
   "webEnv",
   "statusRecords",
   "hnReadiness",
+  "runbook",
 ] as const satisfies ReadonlyArray<keyof LaunchKitArtifacts>;
 
 type ChecksummedLaunchArtifact = (typeof CHECKSUMMED_LAUNCH_ARTIFACTS)[number];
@@ -358,6 +360,7 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
     statusRecords: path.join(opts.outDir, "status-records.json"),
     launchSummary: path.join(opts.outDir, "launch-summary.json"),
     hnReadiness: path.join(opts.outDir, "hn-readiness.ps1"),
+    runbook: path.join(opts.outDir, "runbook.md"),
     checksums: path.join(opts.outDir, "checksums.txt"),
   };
   await mkdir(opts.outDir, { recursive: true });
@@ -385,6 +388,20 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
       repo: opts.repo ?? "ucsandman/groundlock-receipts",
       branch: opts.branch ?? "main",
       showHnDraft: opts.showHnDraft ?? "docs/show-hn-draft.md",
+    }),
+    "utf8",
+  );
+  await writeFile(
+    artifactPaths.runbook,
+    launchKitRunbook({
+      siteUrl,
+      statusBaseUrl,
+      dohEndpoint,
+      domain: fixture.domain,
+      fileOrHash: opts.fileOrHash,
+      ttl,
+      repo: opts.repo ?? "ucsandman/groundlock-receipts",
+      branch: opts.branch ?? "main",
     }),
     "utf8",
   );
@@ -441,6 +458,71 @@ function formatLaunchKitChecksums(
   artifactPaths: LaunchKitArtifacts,
 ): string {
   return CHECKSUMMED_LAUNCH_ARTIFACTS.map((key) => `${artifactSha256[key]}  ${path.basename(artifactPaths[key])}`).join("\n") + "\n";
+}
+
+function launchKitRunbook(opts: {
+  siteUrl: string;
+  statusBaseUrl: string;
+  dohEndpoint: string;
+  domain: string;
+  fileOrHash: string;
+  ttl?: number;
+  repo: string;
+  branch: string;
+}): string {
+  const ttlLine = opts.ttl === undefined ? "Use your DNS provider's default TTL unless your launch process requires a shorter cache window." : `Use TTL ${opts.ttl} for the generated TXT records.`;
+  return [
+    "# GroundLock launch runbook",
+    "",
+    "This launch kit was generated from a PASS GroundLock receipt fixture. It contains public DNS, verifier, status, and audit artifacts only; it does not contain private signing keys.",
+    "",
+    "## Artifacts",
+    "",
+    "- `dns-fixture.json` - expected DNS TXT fixture used by resolver-cache warming and live verification.",
+    "- `dns-zone.txt` - pasteable DNS zone TXT records.",
+    "- `web.env` - environment values for the public verifier deployment.",
+    "- `status-records.json` - public key and claim status records.",
+    "- `hn-readiness.ps1` - final launch audit wrapper.",
+    "- `launch-summary.json` - generated launch metadata and artifact hashes.",
+    "- `runbook.md` - this launch handoff guide.",
+    "- `checksums.txt` - base64url SHA-256 hashes for public handoff artifacts.",
+    "",
+    "## 1. Publish DNS TXT records",
+    "",
+    "Copy every TXT record from `dns-zone.txt` into the authoritative DNS zone for the signer domain.",
+    ttlLine,
+    "",
+    "## 2. Configure the verifier",
+    "",
+    "Install the values from `web.env` in the verifier host and build/deploy the web app for the public origin:",
+    "",
+    "```powershell",
+    `docker build --build-arg NEXT_PUBLIC_SITE_URL="${escapePs(opts.siteUrl)}" -t groundlock-web .`,
+    "```",
+    "",
+    "## 3. Publish status records",
+    "",
+    `Serve the key and claim status records from \`status-records.json\` at \`${opts.statusBaseUrl}\`, or use the same-origin status endpoints when \`web.env\` includes \`GROUNDLOCK_STATUS_RECORDS_JSON\`.`,
+    "",
+    "## 4. Warm and verify",
+    "",
+    "Run these checks after DNS and the verifier are public:",
+    "",
+    "```powershell",
+    `groundlock warm-cache .\\dns-fixture.json --doh-endpoint "${escapePs(opts.dohEndpoint)}"`,
+    `groundlock check-live "${escapePs(opts.fileOrHash)}" --domain "${escapePs(opts.domain)}" --status-base-url "${escapePs(opts.statusBaseUrl)}" --doh-endpoint "${escapePs(opts.dohEndpoint)}"`,
+    ".\\hn-readiness.ps1",
+    "```",
+    "",
+    "## Integrity",
+    "",
+    "Compare `checksums.txt` with `launch-summary.json.artifactSha256` before handing the kit to someone else. The checksum file intentionally excludes `launch-summary.json` and itself to avoid self-referential hashes.",
+    "",
+    "## Source",
+    "",
+    `Repository: ${opts.repo}`,
+    `Branch: ${opts.branch}`,
+  ].join("\n") + "\n";
 }
 
 async function readTextCapped(filePath: string): Promise<string> {
