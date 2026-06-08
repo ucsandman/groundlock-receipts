@@ -63,6 +63,23 @@ The command writes `launch-key-1.private.jwk` and `launch-key-1.public.jwk` and 
 groundlock local-publish .\notice.txt --source .\source.json --domain publisher.example --kid launch-key-1 --key .\keys\launch-key-1.private.jwk --public-key .\keys\launch-key-1.public.jwk --out .\published
 ```
 
+Generate a launch kit from that same fixture before configuring the public verifier:
+
+```powershell
+groundlock launch-kit .\published\dns-fixture.json --out .\published\launch-kit --site-url https://receipts.example.com --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --file-or-hash .\notice.txt --ttl 300
+```
+
+The launch kit is a public deployment bundle. It writes:
+
+- `dns-fixture.json` - copied fixture used by `warm-cache`, `check-live`, and the HN readiness audit.
+- `dns-zone.txt` - pasteable zone-file TXT records for the identity, manifest, and chunks.
+- `web.env` - verifier environment generated from the fixture, including same-origin status records when used.
+- `status-records.json` - public key and claim status records, with no private key material.
+- `launch-summary.json` - the launch domain, site URL, content hash, receipt hash, signer key id, and artifact names.
+- `hn-readiness.ps1` - a PowerShell wrapper for the final `scripts/hn_readiness.py --evidence-out ...` audit.
+
+`launch-kit` reconstructs the receipt from the fixture chunks, checks the payload hash, receipt hash, signer domain, key id, active key/claim status records, and refuses to generate the bundle unless the receipt verdict is PASS. It does not mutate DNS, deploy the verifier, or store private signing keys.
+
 ## Health check
 
 Use `GET /api/health` for deployment readiness and uptime monitors. It returns booleans for whether live verifier environment variables are configured, but never returns configured domain, resolver, status URL, status records, or secrets.
@@ -145,6 +162,8 @@ groundlock export-web-env .\published\dns-fixture.json --status-base-url https:/
 
 `--doh-endpoint` is required because the generated block enables live verifier mode, and live mode fails closed without an explicit resolver URL. `--site-url` is optional for local demos, but required for a public launch because the readiness audit expects the deployed verifier to report `siteUrlConfigured` and render canonical/share metadata for the public origin. If a path is provided, the CLI writes only the origin.
 
+For public launches, prefer `groundlock launch-kit` over hand-running `export-web-env` and `setup-domain`, then copy the generated `web.env` values into the hosting provider and the generated `dns-zone.txt` records into the DNS provider.
+
 Return the JSON status record directly:
 
 ```json
@@ -203,6 +222,7 @@ The audit exits non-zero if:
 - Launch URLs and signer domain are real public DNS hosts, not `.example`, `localhost`, malformed DNS names, URL credentials, query/fragment variants, or IP addresses.
 - Public homepage renders the `GroundLock Receipts` title and canonical/Open Graph/Twitter image metadata for the same public HTTPS verifier origin.
 - Web env generated with `groundlock export-web-env` and installed in the deployment.
+- Launch kit generated from the same public demo fixture, with `launch-summary.json` showing `receiptVerdict: "pass"`.
 - `GROUNDLOCK_SIGNER_DOMAIN` points at the publisher domain.
 - `NEXT_PUBLIC_SITE_URL` points at the public HTTPS verifier origin.
 - `GROUNDLOCK_DOH_ENDPOINT` points at the same explicit resolver URL used for `warm-cache`, `check-live`, and `hn_readiness.py`.

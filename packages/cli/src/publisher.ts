@@ -1,6 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  cacheChunkName,
+  contentHashToDnsName,
   createClaimStatusRecord,
   createDohTxtResolver,
   createDnsCacheRecords,
@@ -10,10 +12,15 @@ import {
   digestText,
   generateSigningKey,
   issueVerifiedReceipt,
+  parseCacheChunkRecord,
+  parseCacheManifestRecord,
+  parseIdentityRecord,
   receiptStatusHash,
+  sha256,
   verifyTrueName,
   type ClaimStatusRecord,
   type DnsCacheRecords,
+  type CacheManifestRecord,
   type KeyStatusRecord,
   type ProofReceipt,
   type SourceOfTruth,
@@ -97,6 +104,33 @@ export interface WarmDnsCacheResult {
   failures: Array<{ name: string; code: string; explanation: string }>;
 }
 
+export interface LaunchKitOptions {
+  fixturePath: string;
+  outDir: string;
+  siteUrl: string;
+  statusBaseUrl: string;
+  dohEndpoint: string;
+  fileOrHash: string;
+  ttl?: number;
+  repo?: string;
+  branch?: string;
+  showHnDraft?: string;
+}
+
+export interface LaunchKitResult {
+  outDir: string;
+  contentHash: string;
+  receiptHash: string;
+  artifacts: {
+    dnsFixture: string;
+    dnsZone: string;
+    webEnv: string;
+    statusRecords: string;
+    launchSummary: string;
+    hnReadiness: string;
+  };
+}
+
 export interface GenerateKeyFilesOptions {
   kid: string;
   outDir: string;
@@ -112,6 +146,13 @@ interface DnsFixture {
   domain: string;
   txt: Record<string, string[]>;
   status: { key: KeyStatusRecord; claim: ClaimStatusRecord };
+}
+
+interface LaunchFixtureReceipt {
+  contentHash: string;
+  manifest: CacheManifestRecord;
+  receipt: ProofReceipt;
+  records: DnsCacheRecords;
 }
 
 export async function generateKeyFiles(opts: GenerateKeyFilesOptions): Promise<GenerateKeyFilesResult> {
@@ -284,6 +325,90 @@ export async function warmDnsCache(opts: WarmDnsCacheOptions): Promise<WarmDnsCa
   };
 }
 
+export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKitResult> {
+  const siteUrl = normalizeUrlOrigin(opts.siteUrl);
+  const statusBaseUrl = requireHttpsUrl(opts.statusBaseUrl, "missing_status_base_url", "invalid_status_base_url");
+  const dohEndpoint = requireHttpsUrl(opts.dohEndpoint, "missing_doh_endpoint", "invalid_doh_endpoint");
+  const ttl = optionalTtl(opts.ttl);
+  const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
+  const launch = await launchFixtureReceipt(fixture, opts.fileOrHash);
+
+  if (launch.receipt.verdict !== "pass") {
+    throw new Error("launch_receipt_not_pass");
+  }
+
+  const artifactPaths = {
+    dnsFixture: path.join(opts.outDir, "dns-fixture.json"),
+    dnsZone: path.join(opts.outDir, "dns-zone.txt"),
+    webEnv: path.join(opts.outDir, "web.env"),
+    statusRecords: path.join(opts.outDir, "status-records.json"),
+    launchSummary: path.join(opts.outDir, "launch-summary.json"),
+    hnReadiness: path.join(opts.outDir, "hn-readiness.ps1"),
+  };
+  await mkdir(opts.outDir, { recursive: true });
+  await copyFile(opts.fixturePath, artifactPaths.dnsFixture);
+  await writeFile(artifactPaths.dnsZone, formatDnsZoneRecords(launch.records, ttl), "utf8");
+  await writeFile(
+    artifactPaths.webEnv,
+    await exportWebEnv({
+      fixturePath: opts.fixturePath,
+      statusBaseUrl,
+      dohEndpoint,
+      siteUrl,
+    }),
+    "utf8",
+  );
+  await writeFile(artifactPaths.statusRecords, JSON.stringify([fixture.status.key, fixture.status.claim], null, 2) + "\n", "utf8");
+  await writeFile(
+    artifactPaths.launchSummary,
+    JSON.stringify(
+      {
+        schema: "groundlock-launch-kit/v1",
+        generatedAt: new Date().toISOString(),
+        domain: fixture.domain,
+        siteUrl,
+        healthUrl: siteUrl,
+        statusBaseUrl,
+        dohEndpoint,
+        fileOrHash: opts.fileOrHash,
+        contentHash: launch.contentHash,
+        receiptHash: launch.manifest.receiptHash,
+        signerKeyId: launch.manifest.kid,
+        receiptVerdict: launch.receipt.verdict,
+        receiptIssuedAt: launch.receipt.issuedAt,
+        contentClass: launch.receipt.contentClass,
+        dnsTxtRecordCount: Object.keys(fixture.txt).length,
+        statusRecordCount: 2,
+        artifacts: Object.fromEntries(Object.entries(artifactPaths).map(([key, value]) => [key, path.basename(value)])),
+      },
+      null,
+      2,
+    ) + "\n",
+    "utf8",
+  );
+  await writeFile(
+    artifactPaths.hnReadiness,
+    hnReadinessPowerShell({
+      healthUrl: siteUrl,
+      statusBaseUrl,
+      dohEndpoint,
+      domain: fixture.domain,
+      fileOrHash: opts.fileOrHash,
+      repo: opts.repo ?? "ucsandman/groundlock-receipts",
+      branch: opts.branch ?? "main",
+      showHnDraft: opts.showHnDraft ?? "docs/show-hn-draft.md",
+    }),
+    "utf8",
+  );
+
+  return {
+    outDir: opts.outDir,
+    contentHash: launch.contentHash,
+    receiptHash: launch.manifest.receiptHash,
+    artifacts: artifactPaths,
+  };
+}
+
 async function readTextCapped(filePath: string): Promise<string> {
   const data = await readFile(filePath);
   if (data.byteLength > MAX_INPUT_BYTES) throw new Error("input_too_large");
@@ -315,6 +440,59 @@ function validateFixture(value: unknown): DnsFixture {
     throw new Error("invalid_fixture");
   }
   return value as unknown as DnsFixture;
+}
+
+async function launchFixtureReceipt(fixture: DnsFixture, fileOrHash: string): Promise<LaunchFixtureReceipt> {
+  const contentHash = fileOrHash.startsWith("sha256:") ? fileOrHash : digestText(await readTextCapped(fileOrHash));
+  const manifestName = contentHashToDnsName(contentHash, fixture.domain);
+  const manifestText = uniqueTxtValue(fixture, manifestName, "cache_manifest");
+  const manifest = parseCacheManifestRecord(manifestText);
+  if (manifest.signerDomain !== normalizeDomain(fixture.domain)) throw new Error("launch_manifest_domain_mismatch");
+  const identityName = truenameName(fixture.domain);
+  const identityText = uniqueTxtValue(fixture, identityName, "identity");
+  const identity = parseIdentityRecord(identityText);
+  if (identity.kid !== manifest.kid) throw new Error("launch_identity_key_mismatch");
+
+  const chunks: string[] = [];
+  const records: DnsCacheRecords = {
+    identity: { name: identityName, type: "TXT", value: identityText },
+    manifest: { name: manifestName, type: "TXT", value: manifestText },
+    chunks: [],
+  };
+  for (let index = 0; index < manifest.chunkCount; index++) {
+    const chunkName = cacheChunkName(contentHash, fixture.domain, index);
+    const chunkText = uniqueTxtValue(fixture, chunkName, "cache_chunk");
+    const chunk = parseCacheChunkRecord(chunkText);
+    if (chunk.index !== index) throw new Error("launch_chunk_index_mismatch");
+    chunks.push(chunk.data);
+    records.chunks.push({ index, name: chunkName, type: "TXT", value: chunkText });
+  }
+  const payload = chunks.join("");
+  if (sha256(payload) !== manifest.payloadHash) throw new Error("launch_payload_hash_mismatch");
+
+  let receipt: ProofReceipt;
+  try {
+    receipt = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as ProofReceipt;
+  } catch {
+    throw new Error("launch_receipt_malformed");
+  }
+  if (!isRecord(receipt)) throw new Error("launch_receipt_malformed");
+  if (receipt.candidateHash !== contentHash) throw new Error("launch_receipt_hash_mismatch");
+  if (receipt.signerDomain !== fixture.domain) throw new Error("launch_receipt_domain_mismatch");
+  if (receipt.signerKeyId !== manifest.kid) throw new Error("launch_receipt_key_mismatch");
+  if (receiptStatusHash(receipt) !== manifest.receiptHash) throw new Error("launch_receipt_status_hash_mismatch");
+  validateFixtureStatuses(fixture, manifest);
+
+  return { contentHash, manifest, receipt, records };
+}
+
+function validateFixtureStatuses(fixture: DnsFixture, manifest: CacheManifestRecord): void {
+  if (fixture.status.key.kind !== "key" || fixture.status.key.status !== "active") throw new Error("launch_key_status_not_active");
+  if (fixture.status.claim.kind !== "claim" || fixture.status.claim.status !== "active") throw new Error("launch_claim_status_not_active");
+  if (fixture.status.key.subject.signerDomain !== manifest.signerDomain || fixture.status.key.subject.kid !== manifest.kid) {
+    throw new Error("launch_key_status_mismatch");
+  }
+  if (fixture.status.claim.subject.receiptHash !== manifest.receiptHash) throw new Error("launch_claim_status_mismatch");
 }
 
 function dnsTxtFromRecords(records: DnsCacheRecords): Record<string, string[]> {
@@ -354,6 +532,13 @@ function quoteTxtSegment(value: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function uniqueTxtValue(fixture: DnsFixture, name: string, kind: string): string {
+  const records = fixture.txt[normalizeName(name)];
+  if (!records) throw new Error(`missing_${kind}_txt`);
+  if (records.length !== 1 || typeof records[0] !== "string") throw new Error(`ambiguous_${kind}_txt`);
+  return records[0];
 }
 
 function safeFileName(value: string): string {
@@ -402,6 +587,56 @@ function isDnsHostname(hostname: string): boolean {
     return false;
   }
   return host.split(".").every((label) => DNS_LABEL_RE.test(label));
+}
+
+function normalizeDomain(domain: string): string {
+  return domain.trim().replace(/\.$/, "").toLowerCase();
+}
+
+function normalizeName(name: string): string {
+  return normalizeDomain(name);
+}
+
+function truenameName(domain: string): string {
+  return `_truename.${normalizeDomain(domain)}`;
+}
+
+function optionalTtl(value: number | undefined): number {
+  if (value === undefined) return 300;
+  if (!Number.isInteger(value) || value < 1) throw new Error("invalid_ttl");
+  return value;
+}
+
+function hnReadinessPowerShell(opts: {
+  healthUrl: string;
+  statusBaseUrl: string;
+  dohEndpoint: string;
+  domain: string;
+  fileOrHash: string;
+  repo: string;
+  branch: string;
+  showHnDraft: string;
+}): string {
+  return [
+    '$ErrorActionPreference = "Stop"',
+    "$KitDir = Split-Path -Parent $MyInvocation.MyCommand.Path",
+    "python .\\scripts\\hn_readiness.py `",
+    `  --health-url "${escapePs(opts.healthUrl)}" \``,
+    '  --dns-fixture (Join-Path $KitDir "dns-fixture.json") `',
+    `  --file-or-hash "${escapePs(opts.fileOrHash)}" \``,
+    `  --domain "${escapePs(opts.domain)}" \``,
+    `  --status-base-url "${escapePs(opts.statusBaseUrl)}" \``,
+    `  --doh-endpoint "${escapePs(opts.dohEndpoint)}" \``,
+    `  --repo "${escapePs(opts.repo)}" \``,
+    `  --branch "${escapePs(opts.branch)}" \``,
+    `  --show-hn-draft "${escapePs(opts.showHnDraft)}" \``,
+    '  --evidence-out (Join-Path $KitDir "hn-readiness-evidence.json")',
+    "",
+  ].join("\n");
+}
+
+function escapePs(value: string): string {
+  return value.replace(/`/g, "``").replace(/"/g, '`"');
 }
 
 function sameTxtSet(left: string[], right: string[]): boolean {

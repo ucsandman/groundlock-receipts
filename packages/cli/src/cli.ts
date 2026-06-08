@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   exportWebEnv,
   formatDnsZoneRecords,
+  createLaunchKit,
   generateKeyFiles,
   localPublish,
   setupDomainRecords,
@@ -91,6 +92,28 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         process.stdout.write(`${failure.name} ${failure.code} - ${failure.explanation}\n`);
       }
       return result.state === "PASS" ? 0 : 2;
+    }
+    if (command === "launch-kit") {
+      requireValue(first, "dns-fixture");
+      const result = await createLaunchKit({
+        fixturePath: first,
+        outDir: requireFlag(opts, "out"),
+        siteUrl: requireFlag(opts, "site-url"),
+        statusBaseUrl: requireFlag(opts, "status-base-url"),
+        dohEndpoint: requireFlag(opts, "doh-endpoint"),
+        fileOrHash: requireFlag(opts, "file-or-hash"),
+        ttl: optionalPositiveInt(opts.ttl),
+        repo: opts.repo,
+        branch: opts.branch,
+        showHnDraft: opts["show-hn-draft"],
+      });
+      process.stdout.write(`launch-kit ${result.outDir}\n`);
+      process.stdout.write(`content-hash ${result.contentHash}\n`);
+      process.stdout.write(`receipt-hash ${result.receiptHash}\n`);
+      for (const [name, filePath] of Object.entries(result.artifacts)) {
+        process.stdout.write(`${name} ${filePath}\n`);
+      }
+      return 0;
     }
     if (command === "setup-domain") {
       requireValue(first, "domain");
@@ -202,6 +225,7 @@ function help(): string {
     "groundlock check-live <file|hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>",
     "groundlock export-web-env <dns-fixture.json> --status-base-url <url> --doh-endpoint <url> [--site-url <url>]",
     "groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>",
+    "groundlock launch-kit <dns-fixture.json> --out <dir> --site-url <url> --status-base-url <url> --doh-endpoint <url> --file-or-hash <file|sha256> [--ttl <seconds>] [--repo <owner/repo>] [--branch <name>] [--show-hn-draft <path>]",
     "groundlock setup-domain <domain> --receipt <receipt.json> --public-key <jwk> [--chunk-size <chars>] [--format text|zone] [--ttl <seconds>]",
     "groundlock local-publish <file> --source <json> --domain <domain> --kid <kid> --key <jwk> --public-key <jwk> --out <dir>",
   ].join("\n") + "\n";

@@ -41,6 +41,7 @@ docs/quickstart-60-second-verify.md signs a local sample, writes local DNS-cache
 
 Deployment notes:
 docs/deployment.md documents live verifier mode with GROUNDLOCK_SIGNER_DOMAIN, explicit DNS-over-HTTPS TXT lookups, resolver-cache warming, and HTTP key/claim status endpoints.
+`groundlock launch-kit <dns-fixture.json> --out <dir> --site-url <public verifier URL> --status-base-url <url> --doh-endpoint <url> --file-or-hash <file|sha256>` writes the public deployment bundle: verifier env, DNS zone TXT records, status records, launch summary, copied fixture, and the final HN readiness PowerShell command.
 `groundlock export-web-env <dns-fixture.json> --status-base-url <url> --site-url <public verifier URL> --doh-endpoint <url>` prints the deploy env block for the public web verifier.
 `groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` warms and compares the expected DNS TXT records through the configured resolver path.
 The release gate is `groundlock check-live <file-or-hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>` returning PASS against the configured resolver path.
@@ -56,6 +57,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - public homepage title, canonical URL, and share metadata matching the deployed public verifier origin
 - deployed homepage, health, and verify responses with production security headers; health and verify responses with `Cache-Control: no-store`
 - container build and healthcheck evidence, if deploying by container
+- `groundlock launch-kit` output generated from the same PASS demo fixture
 - _truename.<domain> TXT identity record
 - gl-<hash>._groundlock.<domain> TXT manifest records
 - c<N>.gl-<hash>._groundlock.<domain> TXT receipt chunk records

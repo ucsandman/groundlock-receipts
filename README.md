@@ -83,6 +83,8 @@ npm run dev --workspace @groundlock/web -- --hostname 127.0.0.1 --port 3000
 docker build -t groundlock-web .
 docker run --rm -p 3000:3000 groundlock-web
 groundlock generate-key launch-key-1 --out .\keys
+groundlock local-publish .\notice.txt --source .\source.json --domain publisher.example --kid launch-key-1 --key .\keys\launch-key-1.private.jwk --public-key .\keys\launch-key-1.public.jwk --out .\published
+groundlock launch-kit .\published\dns-fixture.json --out .\published\launch-kit --site-url https://receipts.example.com --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --file-or-hash .\notice.txt
 groundlock export-web-env .\published\dns-fixture.json --status-base-url https://publisher.example/groundlock/status --site-url https://receipts.example.com --doh-endpoint https://cloudflare-dns.com/dns-query
 groundlock setup-domain publisher.example --receipt .\receipt.json --public-key .\public.jwk
 groundlock setup-domain publisher.example --receipt .\receipt.json --public-key .\public.jwk --format zone --ttl 300
@@ -106,6 +108,8 @@ See [docs/architecture.md](docs/architecture.md) for the data flow across core, 
 ## Deployment
 
 See [docs/deployment.md](docs/deployment.md) for production web verifier configuration, DNS TXT record requirements, resolver-cache warming, and status endpoint shapes.
+
+For public launch prep, `groundlock launch-kit <dns-fixture.json> --out <dir> ...` writes the deployment bundle from one verified fixture: `web.env`, `dns-zone.txt`, `status-records.json`, `launch-summary.json`, a copied `dns-fixture.json`, and `hn-readiness.ps1`. It refuses BLOCK receipts so the Show HN demo cannot accidentally ship a negative verification path.
 
 The web verifier can run as a container:
 

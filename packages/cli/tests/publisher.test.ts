@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateSigningKey, parseCacheManifestRecord } from "@groundlock/core";
 import {
+  createLaunchKit,
   formatDnsZoneRecords,
   localPublish,
   exportWebEnv,
@@ -127,6 +128,102 @@ describe("publisher SDK", () => {
     expect(env).toContain('"kind":"claim"');
     expect(env).not.toContain("privateKeyJwk");
     expect(env).not.toContain("publicKeyJwk");
+  });
+
+  it("writes a launch kit that ties DNS, status, web env, and HN audit inputs together", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const publishDir = path.join(dir, "publish");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: publishDir,
+    });
+    const kitDir = path.join(dir, "launch-kit");
+
+    const kit = await createLaunchKit({
+      fixturePath: published.fixturePath,
+      outDir: kitDir,
+      siteUrl: "https://receipts.groundlock.dev/path",
+      statusBaseUrl: "https://publisher.example/groundlock/status",
+      dohEndpoint: "https://resolver.example/dns-query",
+      fileOrHash: filePath,
+      ttl: 600,
+    });
+
+    const zone = await readFile(kit.artifacts.dnsZone, "utf8");
+    const webEnv = await readFile(kit.artifacts.webEnv, "utf8");
+    const statusRecords = await readFile(kit.artifacts.statusRecords, "utf8");
+    const summary = JSON.parse(await readFile(kit.artifacts.launchSummary, "utf8"));
+    const hnReadiness = await readFile(kit.artifacts.hnReadiness, "utf8");
+
+    expect(kit.contentHash).toBe(summary.contentHash);
+    expect(kit.receiptHash).toBe(summary.receiptHash);
+    expect(zone).toContain('_truename.publisher.example. 600 IN TXT "');
+    expect(webEnv).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
+    expect(webEnv).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.example/dns-query");
+    expect(statusRecords).toContain('"kind": "key"');
+    expect(statusRecords).toContain('"kind": "claim"');
+    expect(summary.schema).toBe("groundlock-launch-kit/v1");
+    expect(summary.receiptVerdict).toBe("pass");
+    expect(hnReadiness).toContain("scripts\\hn_readiness.py");
+    expect(hnReadiness).toContain("--evidence-out");
+    expect(`${zone}\n${webEnv}\n${statusRecords}\n${JSON.stringify(summary)}\n${hnReadiness}`).not.toContain("privateKeyJwk");
+  });
+
+  it("refuses to create a Hacker News launch kit for a BLOCK receipt", async () => {
+    const { dir, sourcePath, blockedPath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const publishDir = path.join(dir, "publish");
+    const published = await localPublish({
+      filePath: blockedPath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: publishDir,
+    });
+
+    await expect(createLaunchKit({
+      fixturePath: published.fixturePath,
+      outDir: path.join(dir, "launch-kit"),
+      siteUrl: "https://receipts.groundlock.dev",
+      statusBaseUrl: "https://publisher.example/groundlock/status",
+      dohEndpoint: "https://resolver.example/dns-query",
+      fileOrHash: blockedPath,
+    })).rejects.toThrow("launch_receipt_not_pass");
+  });
+
+  it("refuses launch kits when the identity TXT key does not match the manifest key", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const publishDir = path.join(dir, "publish");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: publishDir,
+    });
+    const fixture = JSON.parse(await readFile(published.fixturePath, "utf8")) as { txt: Record<string, string[]> };
+    fixture.txt["_truename.publisher.example"] = [fixture.txt["_truename.publisher.example"]![0]!.replace("kid=k1", "kid=other")];
+    await writeFile(published.fixturePath, JSON.stringify(fixture), "utf8");
+
+    await expect(createLaunchKit({
+      fixturePath: published.fixturePath,
+      outDir: path.join(dir, "launch-kit"),
+      siteUrl: "https://receipts.groundlock.dev",
+      statusBaseUrl: "https://publisher.example/groundlock/status",
+      dohEndpoint: "https://resolver.example/dns-query",
+      fileOrHash: filePath,
+    })).rejects.toThrow("launch_identity_key_mismatch");
   });
 
   it("refuses to export a live web env block without an explicit DoH endpoint", async () => {

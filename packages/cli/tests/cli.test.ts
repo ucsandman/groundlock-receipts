@@ -28,10 +28,12 @@ afterEach(() => {
 async function fixtureDir() {
   const dir = await mkdtemp(path.join(tmpdir(), "groundlock-cli-main-"));
   const sourcePath = path.join(dir, "source.json");
+  const filePath = path.join(dir, "notice.txt");
   const blockedPath = path.join(dir, "blocked.txt");
   await writeFile(sourcePath, JSON.stringify(source), "utf8");
+  await writeFile(filePath, "Dear Jane Roe, return $2,000.00.", "utf8");
   await writeFile(blockedPath, "Dear Jane Roe, return $2,000.00 plus a $99.00 fee.", "utf8");
-  return { dir, sourcePath, blockedPath };
+  return { dir, sourcePath, filePath, blockedPath };
 }
 
 describe("CLI entrypoint", () => {
@@ -243,6 +245,58 @@ describe("CLI entrypoint", () => {
     expect(code).toBe(1);
     const err = stderr.mock.calls.map((call) => String(call[0])).join("");
     expect(err).toContain("invalid_doh_endpoint");
+  });
+
+  it("writes launch-kit artifacts from the actual CLI command", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const outDir = path.join(dir, "publish");
+    const kitDir = path.join(dir, "launch-kit");
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await main([
+      "local-publish",
+      filePath,
+      "--source",
+      sourcePath,
+      "--domain",
+      "publisher.example",
+      "--kid",
+      key.kid,
+      "--key",
+      JSON.stringify(key.privateKeyJwk),
+      "--public-key",
+      JSON.stringify(key.publicKeyJwk),
+      "--out",
+      outDir,
+    ]);
+    stdout.mockClear();
+
+    const code = await main([
+      "launch-kit",
+      path.join(outDir, "dns-fixture.json"),
+      "--out",
+      kitDir,
+      "--site-url",
+      "https://receipts.groundlock.dev/path",
+      "--status-base-url",
+      "https://publisher.example/groundlock/status",
+      "--doh-endpoint",
+      "https://resolver.example/dns-query",
+      "--file-or-hash",
+      filePath,
+      "--ttl",
+      "600",
+    ]);
+
+    expect(code).toBe(0);
+    const out = stdout.mock.calls.map((call) => String(call[0])).join("");
+    const summary = JSON.parse(await readFile(path.join(kitDir, "launch-summary.json"), "utf8"));
+    const webEnv = await readFile(path.join(kitDir, "web.env"), "utf8");
+    expect(out).toContain("launch-kit");
+    expect(out).toContain("content-hash");
+    expect(summary.contentHash).toBe(digestText(await readFile(filePath, "utf8")));
+    expect(summary.receiptVerdict).toBe("pass");
+    expect(webEnv).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
   });
 
   it("prints setup-domain records from the actual CLI command without DNS mutation", async () => {
