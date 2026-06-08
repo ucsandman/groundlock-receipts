@@ -34,7 +34,20 @@ class ContainerConfigTests(unittest.TestCase):
 
         self.assertIn("docker build", workflow)
         self.assertIn("docker run", workflow)
-        self.assertIn("/api/health", workflow)
+        self.assertIn("scripts/smoke_web_response.mjs", workflow)
+
+    def test_web_response_smoke_checks_security_headers(self) -> None:
+        smoke = (ROOT / "scripts" / "smoke_web_response.mjs").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("content-security-policy", smoke)
+        self.assertIn("x-frame-options", smoke)
+        self.assertIn("strict-transport-security", smoke)
+        self.assertIn("permissions-policy", smoke)
+        self.assertIn("unsafe-eval", smoke)
+        self.assertIn("/api/health", smoke)
+        self.assertIn("Cache-Control: no-store", smoke)
 
 
 if __name__ == "__main__":

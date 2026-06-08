@@ -47,6 +47,7 @@ docker run --rm --env-file .env -p 3000:3000 groundlock-web
 The image runs `apps/web` with Next standalone output, listens on `PORT` or `3000`, runs as the non-root `node` user, and includes a Docker `HEALTHCHECK` against `/api/health`.
 
 The web app sets browser hardening headers for all routes: `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Strict-Transport-Security`, `Cross-Origin-Opener-Policy`, `X-DNS-Prefetch-Control`, `X-Permitted-Cross-Domain-Policies`, and `Permissions-Policy`.
+CI runs `node scripts/smoke_web_response.mjs <base-url>` against the built Docker image to prove `/` and `/api/health` return 200, production security headers, and `Cache-Control: no-store` on health responses.
 
 ## Publisher key bootstrap
 
