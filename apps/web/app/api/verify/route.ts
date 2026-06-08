@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { digestText } from "@groundlock/core";
 import {
   MAX_VERIFY_BYTES,
@@ -8,6 +7,7 @@ import {
   verifyPublicContentHash,
 } from "../../../lib/public-verifier";
 import { checkPublicVerifierRateLimit } from "../../../lib/rate-limit";
+import { jsonNoStore } from "../../../lib/http";
 
 export const runtime = "nodejs";
 const MAX_REQUEST_BYTES = MAX_VERIFY_BYTES + 16 * 1024;
@@ -50,9 +50,9 @@ export async function POST(req: Request) {
   return publicError("missing_public_input", 400);
 }
 
-async function readJsonBodyCapped(req: Request): Promise<{ ok: true; body: VerifyRequestBody } | { ok: false; response: NextResponse }> {
+async function readJsonBodyCapped(req: Request): Promise<{ ok: true; body: VerifyRequestBody } | { ok: false; response: Response }> {
   const reader = req.body?.getReader();
-  if (!reader) return { ok: false, response: NextResponse.json({ error: "invalid_json" }, { status: 400 }) };
+  if (!reader) return { ok: false, response: jsonNoStore({ error: "invalid_json" }, { status: 400 }) };
 
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -71,7 +71,7 @@ async function readJsonBodyCapped(req: Request): Promise<{ ok: true; body: Verif
     const text = Buffer.concat(chunks).toString("utf8");
     return { ok: true, body: JSON.parse(text) as VerifyRequestBody };
   } catch {
-    return { ok: false, response: NextResponse.json({ error: "invalid_json" }, { status: 400 }) };
+    return { ok: false, response: jsonNoStore({ error: "invalid_json" }, { status: 400 }) };
   }
 }
 
@@ -90,7 +90,7 @@ async function publicVerify(body: VerifyRequestBody) {
 
   const result = await verifyPublicContentHash(contentHash);
   const timingMs = Math.max(0, Math.round(performance.now() - started));
-  return NextResponse.json({
+  return jsonNoStore({
     state: result.state,
     code: result.code,
     explanation: result.explanation,
@@ -106,7 +106,7 @@ function publicError(code: string, status: number) {
 }
 
 function publicErrorWithHeaders(code: string, status: number, headers?: HeadersInit) {
-  return NextResponse.json(
+  return jsonNoStore(
     {
       state: "UNVERIFIABLE",
       code,

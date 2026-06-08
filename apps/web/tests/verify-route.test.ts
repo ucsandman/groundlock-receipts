@@ -27,8 +27,13 @@ describe("public verifier route", () => {
     const inputs = demoInputs();
 
     await expect(postJson({ fileText: inputs.passText })).resolves.toEqual(
-      expect.objectContaining({ response: expect.objectContaining({ status: 200 }), json: expect.objectContaining({ state: "PASS", code: "verified" }) }),
+      expect.objectContaining({
+        response: expect.objectContaining({ status: 200 }),
+        json: expect.objectContaining({ state: "PASS", code: "verified" }),
+      }),
     );
+    const pass = await postJson({ fileText: inputs.passText });
+    expect(pass.response.headers.get("cache-control")).toBe("no-store");
     await expect(postJson({ fileText: inputs.blockText })).resolves.toEqual(
       expect.objectContaining({ response: expect.objectContaining({ status: 200 }), json: expect.objectContaining({ state: "BLOCK", code: "receipt_blocked" }) }),
     );
@@ -96,6 +101,7 @@ describe("public verifier route", () => {
       last = await postJson({ hash: `sha256:rateLimit${i}` }, { "x-forwarded-for": `203.0.113.${i}` });
     }
     expect(last?.response.status).toBe(429);
+    expect(last?.response.headers.get("cache-control")).toBe("no-store");
     expect(Number(last?.response.headers.get("retry-after"))).toBeGreaterThan(0);
     expect(last?.json).toEqual(expect.objectContaining({ state: "UNVERIFIABLE", code: "rate_limited" }));
   });

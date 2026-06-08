@@ -26,6 +26,7 @@ describe("health route", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     expect(body).toEqual({
       service: "groundlock-web",
       ok: true,
@@ -48,6 +49,7 @@ describe("health route", () => {
     const body = await response.json();
 
     expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     expect(body).toEqual(expect.objectContaining({
       service: "groundlock-web",
       ok: false,
@@ -68,6 +70,7 @@ describe("health route", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     expect(body).toEqual({
       service: "groundlock-web",
       ok: true,

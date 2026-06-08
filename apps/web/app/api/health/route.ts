@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { jsonNoStore } from "../../../lib/http";
 
 export const runtime = "nodejs";
 
@@ -16,7 +16,7 @@ export function GET() {
   const mode: HealthMode = checks.signerDomainConfigured ? "live" : "demo";
 
   if (mode === "live" && !checks.statusBaseUrlConfigured) {
-    return NextResponse.json(
+    return jsonNoStore(
       {
         service: "groundlock-web",
         ok: false,
@@ -28,7 +28,7 @@ export function GET() {
     );
   }
 
-  return NextResponse.json({
+  return jsonNoStore({
     service: "groundlock-web",
     ok: true,
     mode,

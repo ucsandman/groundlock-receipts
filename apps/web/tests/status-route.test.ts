@@ -30,8 +30,10 @@ describe("public status routes", () => {
     const claimResponse = await claimRoute.GET(new Request("http://localhost/groundlock/status/claim?lookup=claim:sha256:abc123"));
 
     expect(keyResponse.status).toBe(200);
+    expect(keyResponse.headers.get("cache-control")).toBe("no-store");
     expect(await keyResponse.json()).toEqual(keyStatus);
     expect(claimResponse.status).toBe(200);
+    expect(claimResponse.headers.get("cache-control")).toBe("no-store");
     expect(await claimResponse.json()).toEqual(claimStatus);
   });
 
@@ -39,6 +41,7 @@ describe("public status routes", () => {
     const keyRoute = await import("../app/groundlock/status/key/route");
     let response = await keyRoute.GET(new Request("http://localhost/groundlock/status/key?lookup=key:publisher.example:k1"));
     expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.json()).toEqual({ error: "status_records_not_configured" });
 
     process.env.GROUNDLOCK_STATUS_RECORDS_JSON = JSON.stringify([]);

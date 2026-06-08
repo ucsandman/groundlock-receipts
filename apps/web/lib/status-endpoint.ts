@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server";
 import {
   publicClaimStatusLookup,
   publicKeyStatusLookup,
   type StatusRecord,
   type StatusRecordKind,
 } from "@groundlock/core";
+import { jsonNoStore } from "./http";
 
-export function publicStatusResponse(req: Request, kind: StatusRecordKind): NextResponse {
+export function publicStatusResponse(req: Request, kind: StatusRecordKind): Response {
   const lookup = new URL(req.url).searchParams.get("lookup")?.trim();
   if (!lookup) return jsonError("missing_lookup", 400);
 
@@ -15,7 +15,7 @@ export function publicStatusResponse(req: Request, kind: StatusRecordKind): Next
 
   const record = records.records.find((candidate) => statusRecordLookup(candidate) === lookup && candidate.kind === kind);
   if (!record) return jsonError("status_not_found", 404);
-  return NextResponse.json(record);
+  return jsonNoStore(record);
 }
 
 function readStatusRecords():
@@ -61,6 +61,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function jsonError(error: string, status: number): NextResponse {
-  return NextResponse.json({ error }, { status });
+function jsonError(error: string, status: number): Response {
+  return jsonNoStore({ error }, { status });
 }
