@@ -46,7 +46,7 @@ docker run --rm --env-file .env -p 3000:3000 groundlock-web
 
 The image runs `apps/web` with Next standalone output, listens on `PORT` or `3000`, runs as the non-root `node` user, and includes a Docker `HEALTHCHECK` against `/api/health`.
 
-The web app sets browser hardening headers for all routes: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Strict-Transport-Security`, `Cross-Origin-Opener-Policy`, `X-DNS-Prefetch-Control`, `X-Permitted-Cross-Domain-Policies`, and `Permissions-Policy`.
+The web app sets browser hardening headers for all routes: `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Strict-Transport-Security`, `Cross-Origin-Opener-Policy`, `X-DNS-Prefetch-Control`, `X-Permitted-Cross-Domain-Policies`, and `Permissions-Policy`.
 
 ## Publisher key bootstrap
 
