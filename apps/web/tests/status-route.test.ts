@@ -64,4 +64,29 @@ describe("public status routes", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.json()).toEqual({ error: "status_records_malformed" });
   });
+
+  it("fails closed when any bundled status record has malformed shape", async () => {
+    process.env.GROUNDLOCK_STATUS_RECORDS_JSON = JSON.stringify([
+      {
+        version: "groundlock-status/v1",
+        kind: "key",
+        subject: { signerDomain: "publisher.example", kid: "k1" },
+        status: "active",
+        issuedAt: "2026-06-08T00:00:00.000Z",
+      },
+      {
+        version: "groundlock-status/v1",
+        kind: "claim",
+        subject: { receiptHash: "sha256:abc123" },
+        status: "active",
+      },
+    ]);
+    const keyRoute = await import("../app/groundlock/status/key/route");
+
+    const response = await keyRoute.GET(new Request("http://localhost/groundlock/status/key?lookup=key:publisher.example:k1"));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({ error: "status_records_malformed" });
+  });
 });

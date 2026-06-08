@@ -30,7 +30,14 @@ export function readStatusRecords():
     return { type: "error", code: "status_records_malformed", status: 503 };
   }
   if (!Array.isArray(parsed)) return { type: "error", code: "status_records_malformed", status: 503 };
-  return { type: "ok", records: parsed.filter(isStatusRecordShape) };
+  const records: StatusRecord[] = [];
+  for (const value of parsed) {
+    if (!isStatusRecordShape(value)) {
+      return { type: "error", code: "status_records_malformed", status: 503 };
+    }
+    records.push(value);
+  }
+  return { type: "ok", records };
 }
 
 function statusRecordLookup(record: StatusRecord): string {

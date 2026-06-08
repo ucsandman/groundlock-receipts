@@ -129,6 +129,42 @@ describe("health route", () => {
     expect(JSON.stringify(body)).not.toContain("not-json");
   });
 
+  it("fails live mode health when any bundled same-origin status record has malformed shape", async () => {
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://receipts.groundlock.dev/groundlock/status";
+    process.env.GROUNDLOCK_STATUS_RECORDS_JSON = JSON.stringify([
+      {
+        version: "groundlock-status/v1",
+        kind: "key",
+        subject: { signerDomain: "publisher.example", kid: "k1" },
+        status: "active",
+        issuedAt: "2026-06-08T00:00:00.000Z",
+      },
+      {
+        version: "groundlock-status/v1",
+        kind: "claim",
+        subject: { receiptHash: "sha256:abc123" },
+        status: "active",
+      },
+    ]);
+
+    const route = await import("../app/api/health/route");
+    const response = await route.GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(body).toEqual(expect.objectContaining({
+      service: "groundlock-web",
+      ok: false,
+      mode: "live",
+      code: "status_records_malformed",
+    }));
+    expect(JSON.stringify(body)).not.toContain("publisher.example");
+  });
+
   it("fails live mode health when bundled same-origin status records lack a key or claim record", async () => {
     process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
