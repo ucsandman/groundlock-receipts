@@ -18,17 +18,19 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
 import urllib.request
 import webbrowser
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
 IS_WIN = os.name == "nt"
+READY_MARKERS = ("GroundLock Receipts", "Store the proof in DNS cache")
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,28 @@ def browser_url(host: str, port: int) -> str:
     if ":" in browser_host and not browser_host.startswith("["):
         browser_host = f"[{browser_host}]"
     return f"http://{browser_host}:{port}"
+
+
+def connect_host(host: str) -> str:
+    return "127.0.0.1" if host in {"0.0.0.0", "::", ""} else host
+
+
+def is_port_available(host: str, port: int) -> bool:
+    probe_host = connect_host(host)
+    try:
+        with socket.create_connection((probe_host, port), timeout=0.3):
+            return False
+    except OSError:
+        return True
+
+
+def find_available_port(host: str, preferred_port: int, max_attempts: int = 25) -> int:
+    for port in range(preferred_port, preferred_port + max_attempts):
+        if is_port_available(host, port):
+            return port
+    raise RuntimeError(
+        f"no available port found from {preferred_port} to {preferred_port + max_attempts - 1}"
+    )
 
 
 def dependencies_installed() -> bool:
@@ -136,15 +160,26 @@ def stop_dev_server(proc: subprocess.Popen) -> None:
         proc.terminate()
 
 
-def wait_for_server(url: str, timeout: float = 120.0) -> bool:
+def is_groundlock_page(content: str) -> bool:
+    return any(marker in content for marker in READY_MARKERS)
+
+
+def wait_for_server(
+    url: str, proc: subprocess.Popen | None = None, timeout: float = 120.0
+) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
+        if proc is not None and proc.poll() is not None:
+            return False
         try:
             with urllib.request.urlopen(url, timeout=2) as response:
-                if response.status < 500:
+                content = response.read(128_000).decode("utf-8", errors="ignore")
+                if response.status < 500 and is_groundlock_page(content):
                     return True
         except Exception:
             time.sleep(0.7)
+            continue
+        time.sleep(0.7)
     return False
 
 
@@ -194,6 +229,15 @@ def main(argv: list[str] | None = None) -> int:
     if preflight_exit != 0:
         return preflight_exit
 
+    try:
+        selected_port = find_available_port(options.host, options.port)
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}.")
+        return 1
+    if selected_port != options.port:
+        print(f"Port {options.port} is already in use; using {selected_port} instead.")
+        options = replace(options, port=selected_port)
+
     url = browser_url(options.host, options.port)
     print(
         f"\n[start web verifier]\n> {' '.join(dev_server_argv(options.host, options.port))}"
@@ -202,8 +246,15 @@ def main(argv: list[str] | None = None) -> int:
 
     proc = start_dev_server(options)
     try:
-        if not wait_for_server(url):
-            print(f"ERROR: dev server did not respond at {url} within 120 seconds.")
+        if not wait_for_server(url, proc=proc):
+            if proc.poll() is not None:
+                print(
+                    f"ERROR: dev server exited with code {proc.returncode} before GroundLock was ready."
+                )
+            else:
+                print(
+                    f"ERROR: GroundLock did not become ready at {url} within 120 seconds."
+                )
             stop_dev_server(proc)
             return 1
 

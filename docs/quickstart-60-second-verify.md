@@ -18,6 +18,8 @@ To start the full local verifier app instead of only running the CLI quickstart,
 python .\launch.py
 ```
 
+Follow the URL printed by the launcher. If port `3000` is busy, it automatically picks the next free port.
+
 ## Create a sample outside the repo
 
 ```powershell

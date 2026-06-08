@@ -1,7 +1,9 @@
 import importlib.util
+import socket
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +63,37 @@ class LaunchScriptTests(unittest.TestCase):
         )
 
         self.assertEqual(launch.preflight_steps(args, dependencies_installed=False), [])
+
+    def test_find_available_port_skips_occupied_port(self) -> None:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            occupied_port = listener.getsockname()[1]
+
+            selected_port = launch.find_available_port("127.0.0.1", occupied_port)
+
+        self.assertGreater(selected_port, occupied_port)
+
+    def test_wait_for_server_rejects_non_groundlock_pages(self) -> None:
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+            def read(self, _limit: int = -1) -> bytes:
+                return b"<html><title>DashClaw</title></html>"
+
+        with (
+            patch.object(launch.time, "sleep", return_value=None),
+            patch.object(launch.urllib.request, "urlopen", return_value=FakeResponse()),
+        ):
+            self.assertFalse(
+                launch.wait_for_server("http://127.0.0.1:3000", timeout=0.01)
+            )
 
 
 if __name__ == "__main__":

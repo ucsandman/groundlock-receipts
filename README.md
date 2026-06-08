@@ -51,7 +51,7 @@ python .\launch.py --skip-tests
 python .\launch.py --skip-build --no-browser
 ```
 
-The launcher fails fast if install, build, or tests fail. Use `--skip-build` or `--skip-tests` only when you intentionally want a faster local UI check.
+The launcher prints the exact local URL after startup. If the default port `3000` is already in use, it chooses the next free port instead of attaching to the wrong app. It also fails fast if install, build, tests, or GroundLock page readiness fail. Use `--skip-build` or `--skip-tests` only when you intentionally want a faster local UI check.
 
 ## Workspaces
 
