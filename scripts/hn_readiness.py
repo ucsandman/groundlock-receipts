@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import html.parser
 import json
 import ipaddress
 import shutil
@@ -12,7 +13,7 @@ import sys
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +35,8 @@ RESERVED_SUFFIXES = (
     ".localhost",
     ".test",
 )
+OG_IMAGE_PATH = "/groundlock-receipt-desk.png"
+SITE_TITLE = "GroundLock Receipts"
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,44 @@ class CheckResult:
     name: str
     ok: bool
     detail: str
+
+
+class MetadataExtractor(html.parser.HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.canonical: str | None = None
+        self.meta: dict[str, str] = {}
+        self._in_title = False
+        self._title_parts: list[str] = []
+
+    def handle_starttag(  # noqa: vulture
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        if tag.lower() == "title":
+            self._in_title = True
+            return
+        values = {key.lower(): value for key, value in attrs if value is not None}
+        if tag.lower() == "link" and "canonical" in values.get("rel", "").lower():
+            self.canonical = values.get("href")
+            return
+        if tag.lower() != "meta":
+            return
+        content = values.get("content")
+        key = values.get("property") or values.get("name")
+        if key and content:
+            self.meta[key.lower()] = content
+
+    def handle_data(self, data: str) -> None:  # noqa: vulture
+        if self._in_title:
+            self._title_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:  # noqa: vulture
+        if tag.lower() == "title":
+            self._in_title = False
+
+    @property
+    def title(self) -> str:
+        return " ".join(part.strip() for part in self._title_parts if part.strip())
 
 
 def check_show_hn_draft(path: Path = DEFAULT_DRAFT_PATH) -> CheckResult:
@@ -97,6 +138,15 @@ def health_endpoint(url: str) -> str:
     if clean.endswith("/api/health"):
         return clean
     return f"{clean}/api/health"
+
+
+def homepage_url(url: str) -> str:
+    parsed = urlparse(url.strip())
+    if parsed.path.rstrip("/") == "/api/health":
+        parsed = parsed._replace(path="/", params="", query="", fragment="")
+        return urlunparse(parsed)
+    clean = url.strip().rstrip("/")
+    return f"{clean}/"
 
 
 def check_launch_targets(args: argparse.Namespace) -> CheckResult:
@@ -164,6 +214,76 @@ def check_health_url(url: str, timeout: float = 10.0) -> CheckResult:
         return CheckResult("health", False, f"{endpoint} failed: {exc}")
 
     return validate_health_body(body)
+
+
+def extract_metadata(html: str) -> MetadataExtractor:
+    extractor = MetadataExtractor()
+    extractor.feed(html)
+    return extractor
+
+
+def normalize_root_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    parsed = urlparse(value.strip())
+    if parsed.path in ("", "/") and not parsed.params and not parsed.query:
+        return urlunparse(parsed._replace(path="/", params="", query="", fragment=""))
+    return value.strip()
+
+
+def validate_homepage_metadata(html: str, expected_home_url: str) -> CheckResult:
+    expected_home = homepage_url(expected_home_url)
+    expected_origin = urlparse(expected_home)._replace(
+        path="", params="", query="", fragment=""
+    )
+    origin = urlunparse(expected_origin)
+    metadata = extract_metadata(html)
+    failures = []
+
+    if normalize_root_url(metadata.canonical) != expected_home:
+        failures.append(
+            f"canonical href is {metadata.canonical!r}, expected {expected_home}"
+        )
+    if normalize_root_url(metadata.meta.get("og:url")) != expected_home:
+        failures.append(
+            f"og:url is {metadata.meta.get('og:url')!r}, expected {expected_home}"
+        )
+    expected_image = f"{origin}{OG_IMAGE_PATH}"
+    if metadata.meta.get("og:image") != expected_image:
+        failures.append(
+            f"og:image is {metadata.meta.get('og:image')!r}, expected {expected_image}"
+        )
+    if metadata.meta.get("twitter:image") != expected_image:
+        failures.append(
+            "twitter:image is "
+            f"{metadata.meta.get('twitter:image')!r}, expected {expected_image}"
+        )
+    if SITE_TITLE not in metadata.title:
+        failures.append(
+            f"title is {metadata.title!r}, expected it to contain {SITE_TITLE!r}"
+        )
+
+    if failures:
+        return CheckResult("metadata", False, "; ".join(failures))
+    return CheckResult("metadata", True, "homepage metadata matches launch URL")
+
+
+def check_homepage_metadata(url: str, timeout: float = 10.0) -> CheckResult:
+    endpoint = homepage_url(url)
+    request = urllib.request.Request(
+        endpoint, headers={"User-Agent": "groundlock-hn-readiness/1"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read(512_000).decode("utf-8", errors="replace")
+            if response.status != 200:
+                return CheckResult(
+                    "metadata", False, f"{endpoint} returned HTTP {response.status}"
+                )
+    except Exception as exc:
+        return CheckResult("metadata", False, f"{endpoint} failed: {exc}")
+
+    return validate_homepage_metadata(body, endpoint)
 
 
 def build_check_live_argv(
@@ -339,6 +459,7 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
         *preflight,
         check_ci(args.repo, args.branch),
         check_health_url(args.health_url),
+        check_homepage_metadata(args.health_url),
         check_warm_cache(args.dns_fixture, args.doh_endpoint),
         check_live_receipt(
             args.file_or_hash, args.domain, args.status_base_url, args.doh_endpoint

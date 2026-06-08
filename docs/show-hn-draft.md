@@ -53,6 +53,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - configured resolver-cache warming path
 - configured GROUNDLOCK_SIGNER_DOMAIN, GROUNDLOCK_STATUS_BASE_URL, and public status record source
 - deployed `/api/health` returning 200
+- public homepage title, canonical URL, and share metadata matching the deployed public verifier origin
 - container build and healthcheck evidence, if deploying by container
 - _truename.<domain> TXT identity record
 - gl-<hash>._groundlock.<domain> TXT manifest records

@@ -85,6 +85,97 @@ class HnReadinessTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
 
+    def test_homepage_url_strips_health_endpoint(self) -> None:
+        self.assertEqual(
+            hn_readiness.homepage_url(
+                "https://receipts.groundlock.dev/api/health?check=true"
+            ),
+            "https://receipts.groundlock.dev/",
+        )
+
+    def test_homepage_metadata_accepts_public_launch_origin(self) -> None:
+        html = """
+        <html>
+          <head>
+            <title>GroundLock Receipts</title>
+            <link rel="canonical" href="https://receipts.groundlock.dev/">
+            <meta property="og:title" content="GroundLock Receipts">
+            <meta property="og:url" content="https://receipts.groundlock.dev/">
+            <meta property="og:image" content="https://receipts.groundlock.dev/groundlock-receipt-desk.png">
+            <meta name="twitter:image" content="https://receipts.groundlock.dev/groundlock-receipt-desk.png">
+          </head>
+        </html>
+        """
+
+        result = hn_readiness.validate_homepage_metadata(
+            html, "https://receipts.groundlock.dev/api/health"
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.name, "metadata")
+
+    def test_homepage_metadata_accepts_root_urls_without_trailing_slash(self) -> None:
+        html = """
+        <html>
+          <head>
+            <title>GroundLock Receipts</title>
+            <link rel="canonical" href="https://receipts.groundlock.dev">
+            <meta property="og:title" content="GroundLock Receipts">
+            <meta property="og:url" content="https://receipts.groundlock.dev">
+            <meta property="og:image" content="https://receipts.groundlock.dev/groundlock-receipt-desk.png">
+            <meta name="twitter:image" content="https://receipts.groundlock.dev/groundlock-receipt-desk.png">
+          </head>
+        </html>
+        """
+
+        result = hn_readiness.validate_homepage_metadata(
+            html, "https://receipts.groundlock.dev/"
+        )
+
+        self.assertTrue(result.ok)
+
+    def test_homepage_metadata_rejects_stale_localhost_urls(self) -> None:
+        html = """
+        <html>
+          <head>
+            <title>GroundLock Receipts</title>
+            <link rel="canonical" href="http://localhost:3000/">
+            <meta property="og:title" content="GroundLock Receipts">
+            <meta property="og:url" content="http://localhost:3000/">
+            <meta property="og:image" content="http://localhost:3000/groundlock-receipt-desk.png">
+            <meta name="twitter:image" content="http://localhost:3000/groundlock-receipt-desk.png">
+          </head>
+        </html>
+        """
+
+        result = hn_readiness.validate_homepage_metadata(
+            html, "https://receipts.groundlock.dev/"
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("canonical", result.detail)
+        self.assertIn("og:url", result.detail)
+        self.assertIn("localhost", result.detail)
+
+    def test_homepage_metadata_requires_groundlock_title(self) -> None:
+        html = """
+        <html>
+          <head>
+            <link rel="canonical" href="https://receipts.groundlock.dev/">
+            <meta property="og:url" content="https://receipts.groundlock.dev/">
+            <meta property="og:image" content="https://receipts.groundlock.dev/groundlock-receipt-desk.png">
+            <meta name="twitter:image" content="https://receipts.groundlock.dev/groundlock-receipt-desk.png">
+          </head>
+        </html>
+        """
+
+        result = hn_readiness.validate_homepage_metadata(
+            html, "https://receipts.groundlock.dev/"
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("GroundLock Receipts", result.detail)
+
     def test_run_checks_stops_before_external_checks_when_preflight_fails(self) -> None:
         args = SimpleNamespace(
             health_url="http://localhost:3000",
