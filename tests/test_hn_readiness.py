@@ -70,6 +70,17 @@ class HnReadinessTests(unittest.TestCase):
         self.assertIn("--doh-endpoint", argv)
         self.assertIn("https://resolver.example/dns-query", argv)
 
+    def test_builds_local_warm_cache_command_without_shell(self) -> None:
+        argv = hn_readiness.build_warm_cache_argv(
+            dns_fixture="published/dns-fixture.json",
+            doh_endpoint="https://resolver.example/dns-query",
+        )
+
+        self.assertEqual(argv[0:3], ["node", str(hn_readiness.CLI_PATH), "warm-cache"])
+        self.assertIn("published/dns-fixture.json", argv)
+        self.assertIn("--doh-endpoint", argv)
+        self.assertIn("https://resolver.example/dns-query", argv)
+
     def test_ci_check_rejects_successful_run_for_older_commit(self) -> None:
         result = hn_readiness.validate_ci_runs(
             [

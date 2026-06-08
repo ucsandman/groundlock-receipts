@@ -117,6 +117,37 @@ def build_check_live_argv(
     return argv
 
 
+def build_warm_cache_argv(
+    dns_fixture: str, doh_endpoint: str | None = None
+) -> list[str]:
+    argv = ["node", str(CLI_PATH), "warm-cache", dns_fixture]
+    if doh_endpoint:
+        argv.extend(["--doh-endpoint", doh_endpoint])
+    return argv
+
+
+def check_warm_cache(dns_fixture: str, doh_endpoint: str | None = None) -> CheckResult:
+    if not CLI_PATH.is_file():
+        return CheckResult(
+            "warm-cache", False, f"missing built CLI at {CLI_PATH}; run npm run build"
+        )
+
+    argv = build_warm_cache_argv(dns_fixture, doh_endpoint)
+    proc = subprocess.run(argv, cwd=str(ROOT), capture_output=True, text=True)
+    output = "\n".join(
+        part for part in [proc.stdout.strip(), proc.stderr.strip()] if part
+    )
+    if proc.returncode != 0:
+        return CheckResult(
+            "warm-cache", False, output or f"warm-cache exited {proc.returncode}"
+        )
+    if not proc.stdout.lstrip().startswith("PASS "):
+        return CheckResult(
+            "warm-cache", False, output or "warm-cache did not report PASS"
+        )
+    return CheckResult("warm-cache", True, proc.stdout.strip())
+
+
 def check_live_receipt(
     file_or_hash: str,
     domain: str,
@@ -231,6 +262,7 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
         check_show_hn_draft(Path(args.show_hn_draft)),
         check_ci(args.repo, args.branch),
         check_health_url(args.health_url),
+        check_warm_cache(args.dns_fixture, args.doh_endpoint),
         check_live_receipt(
             args.file_or_hash, args.domain, args.status_base_url, args.doh_endpoint
         ),
@@ -250,6 +282,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--file-or-hash",
         required=True,
         help="public demo file path or sha256: hash for check-live",
+    )
+    parser.add_argument(
+        "--dns-fixture",
+        required=True,
+        help="dns-fixture.json for warm-cache",
     )
     parser.add_argument("--domain", required=True, help="publisher signer domain")
     parser.add_argument(
