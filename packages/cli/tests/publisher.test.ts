@@ -170,6 +170,10 @@ describe("publisher SDK", () => {
     expect(statusRecords).toContain('"kind": "claim"');
     expect(summary.schema).toBe("groundlock-launch-kit/v1");
     expect(summary.receiptVerdict).toBe("pass");
+    expect(hnReadiness).toContain("$CandidateRoots");
+    expect(hnReadiness).toContain("$RepoRoot");
+    expect(hnReadiness).toContain("Push-Location $RepoRoot");
+    expect(hnReadiness).toContain("could_not_find_groundlock_repo_root");
     expect(hnReadiness).toContain("scripts\\hn_readiness.py");
     expect(hnReadiness).toContain("--evidence-out");
     expect(`${zone}\n${webEnv}\n${statusRecords}\n${JSON.stringify(summary)}\n${hnReadiness}`).not.toContain("privateKeyJwk");
