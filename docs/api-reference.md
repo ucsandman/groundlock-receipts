@@ -4,7 +4,7 @@
 
 Config-only health check for hosts and uptime monitors.
 
-It returns `200` in demo mode. In live verifier mode, it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is configured but `GROUNDLOCK_STATUS_BASE_URL` or `GROUNDLOCK_DOH_ENDPOINT` is missing. If `GROUNDLOCK_STATUS_BASE_URL` points at the same origin as `NEXT_PUBLIC_SITE_URL`, it also returns `503` until `GROUNDLOCK_STATUS_RECORDS_JSON` is configured for the bundled status routes. It reports booleans only and does not expose configured domain, resolver, status URL, or status record values.
+It returns `200` in demo mode. In live verifier mode, it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is configured but `GROUNDLOCK_STATUS_BASE_URL` or `GROUNDLOCK_DOH_ENDPOINT` is missing. If `GROUNDLOCK_STATUS_BASE_URL` points at the same origin as `NEXT_PUBLIC_SITE_URL`, it also returns `503` until `GROUNDLOCK_STATUS_RECORDS_JSON` is parseable and contains at least one usable key record and one usable claim record for the bundled status routes. It reports booleans only and does not expose configured domain, resolver, status URL, or status record values.
 
 ```json
 {

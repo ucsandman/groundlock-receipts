@@ -18,7 +18,7 @@ export function publicStatusResponse(req: Request, kind: StatusRecordKind): Resp
   return jsonNoStore(record);
 }
 
-function readStatusRecords():
+export function readStatusRecords():
   | { type: "ok"; records: StatusRecord[] }
   | { type: "error"; code: string; status: number } {
   const raw = process.env.GROUNDLOCK_STATUS_RECORDS_JSON?.trim();
@@ -44,6 +44,12 @@ function isStatusRecordShape(value: unknown): value is StatusRecord {
   if (!isRecord(value) || value.version !== "groundlock-status/v1" || typeof value.kind !== "string") {
     return false;
   }
+  if (typeof value.issuedAt !== "string" || !isStatusValue(value.status)) {
+    return false;
+  }
+  if (value.reason !== undefined && typeof value.reason !== "string") {
+    return false;
+  }
   if (value.kind === "key") {
     return (
       isRecord(value.subject) &&
@@ -55,6 +61,10 @@ function isStatusRecordShape(value: unknown): value is StatusRecord {
     return isRecord(value.subject) && typeof value.subject.receiptHash === "string";
   }
   return false;
+}
+
+function isStatusValue(value: unknown): boolean {
+  return value === "active" || value === "revoked" || value === "retracted" || value === "compromised";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

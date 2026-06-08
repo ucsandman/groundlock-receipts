@@ -53,4 +53,15 @@ describe("public status routes", () => {
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "status_not_found" });
   });
+
+  it("fails closed for malformed bundled status records", async () => {
+    process.env.GROUNDLOCK_STATUS_RECORDS_JSON = "not-json";
+    const keyRoute = await import("../app/groundlock/status/key/route");
+
+    const response = await keyRoute.GET(new Request("http://localhost/groundlock/status/key?lookup=key:publisher.example:k1"));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({ error: "status_records_malformed" });
+  });
 });

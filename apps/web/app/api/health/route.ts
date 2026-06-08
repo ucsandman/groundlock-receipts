@@ -1,4 +1,5 @@
 import { jsonNoStore } from "../../../lib/http";
+import { readStatusRecords } from "../../../lib/status-endpoint";
 
 export const runtime = "nodejs";
 
@@ -55,6 +56,34 @@ export function GET() {
     );
   }
 
+  if (mode === "live" && usesBundledStatusEndpoint()) {
+    const statusRecords = readStatusRecords();
+    if (statusRecords.type !== "ok") {
+      return jsonNoStore(
+        {
+          service: "groundlock-web",
+          ok: false,
+          mode,
+          code: statusRecords.code,
+          checks,
+        },
+        { status: statusRecords.status },
+      );
+    }
+    if (!hasStatusRecordKind(statusRecords.records, "key") || !hasStatusRecordKind(statusRecords.records, "claim")) {
+      return jsonNoStore(
+        {
+          service: "groundlock-web",
+          ok: false,
+          mode,
+          code: "status_records_incomplete",
+          checks,
+        },
+        { status: 503 },
+      );
+    }
+  }
+
   return jsonNoStore({
     service: "groundlock-web",
     ok: true,
@@ -75,6 +104,10 @@ function readHealthChecks(): HealthChecks {
 
 function isConfigured(value: string | undefined): boolean {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function hasStatusRecordKind(records: Array<{ kind: string }>, kind: "key" | "claim"): boolean {
+  return records.some((record) => record.kind === kind);
 }
 
 function usesBundledStatusEndpoint(): boolean {
