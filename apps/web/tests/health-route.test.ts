@@ -64,6 +64,49 @@ describe("health route", () => {
     expect(JSON.stringify(body)).not.toContain("publisher.example");
   });
 
+  it("fails live mode health when bundled same-origin status records are missing", async () => {
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev/app";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://receipts.groundlock.dev/groundlock/status";
+    delete process.env.GROUNDLOCK_STATUS_RECORDS_JSON;
+
+    const route = await import("../app/api/health/route");
+    const response = await route.GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(body).toEqual(expect.objectContaining({
+      service: "groundlock-web",
+      ok: false,
+      mode: "live",
+      code: "missing_status_records",
+    }));
+    expect(JSON.stringify(body)).not.toContain("receipts.groundlock.dev");
+  });
+
+  it("allows externally managed status records without bundled status JSON", async () => {
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.example/groundlock/status";
+    delete process.env.GROUNDLOCK_STATUS_RECORDS_JSON;
+
+    const route = await import("../app/api/health/route");
+    const response = await route.GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual(expect.objectContaining({
+      service: "groundlock-web",
+      ok: true,
+      mode: "live",
+      checks: expect.objectContaining({
+        statusBaseUrlConfigured: true,
+        statusRecordsConfigured: false,
+      }),
+    }));
+  });
+
   it("reports live mode as ready when required config is present", async () => {
     process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";

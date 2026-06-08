@@ -29,6 +29,19 @@ export function GET() {
     );
   }
 
+  if (mode === "live" && usesBundledStatusEndpoint() && !checks.statusRecordsConfigured) {
+    return jsonNoStore(
+      {
+        service: "groundlock-web",
+        ok: false,
+        mode,
+        code: "missing_status_records",
+        checks,
+      },
+      { status: 503 },
+    );
+  }
+
   return jsonNoStore({
     service: "groundlock-web",
     ok: true,
@@ -49,4 +62,20 @@ function readHealthChecks(): HealthChecks {
 
 function isConfigured(value: string | undefined): boolean {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function usesBundledStatusEndpoint(): boolean {
+  const siteOrigin = configuredOrigin(process.env.NEXT_PUBLIC_SITE_URL);
+  const statusOrigin = configuredOrigin(process.env.GROUNDLOCK_STATUS_BASE_URL);
+  return siteOrigin !== null && statusOrigin !== null && siteOrigin === statusOrigin;
+}
+
+function configuredOrigin(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return null;
+  }
 }
