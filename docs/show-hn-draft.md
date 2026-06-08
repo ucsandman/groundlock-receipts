@@ -43,6 +43,7 @@ Deployment notes:
 docs/deployment.md documents live verifier mode with GROUNDLOCK_SIGNER_DOMAIN, DNS-over-HTTPS TXT lookups, resolver-cache warming, and HTTP key/claim status endpoints.
 `groundlock export-web-env <dns-fixture.json> --status-base-url <url>` prints the deploy env block for the public web verifier.
 The release gate is `groundlock check-live <file-or-hash> --domain <domain> --status-base-url <url>` returning PASS against the configured resolver path.
+The final go/no-go audit is `python .\scripts\hn_readiness.py --health-url <url> --file-or-hash <file-or-hash> --domain <domain> --status-base-url <url>`.
 
 Before removing LOCAL_DEMO_ONLY, deployment needs:
 - public HTTPS deployment of the web verifier
@@ -58,6 +59,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - public demo fixtures that do not contain secrets or private customer data
 - check-live PASS evidence for at least one public demo receipt
 - green CI run on main
+- `scripts/hn_readiness.py` passing
 
 Repo:
 https://github.com/ucsandman/groundlock-receipts

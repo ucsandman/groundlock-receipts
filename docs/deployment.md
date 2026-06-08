@@ -119,6 +119,22 @@ Return the JSON status record directly:
 
 Use HTTP `404` for missing status records. Use `revoked`, `retracted`, or `compromised` status values to force `REVOKED`.
 
+## Launch readiness audit
+
+After the public verifier, DNS records, resolver cache warming, status endpoints, and CI are in place, run:
+
+```powershell
+python .\scripts\hn_readiness.py --health-url https://publisher.example --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
+```
+
+The audit exits non-zero if:
+
+- the git worktree is dirty
+- `docs/show-hn-draft.md` still contains `LOCAL_DEMO_ONLY`
+- the latest GitHub Actions `CI` run on `main` is not successful
+- the deployed `/api/health` response is missing, not `ok`, or still in demo mode
+- `groundlock check-live` does not return `PASS` for the public demo receipt
+
 ## Release checklist
 
 - Public HTTPS verifier deployed.

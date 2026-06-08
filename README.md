@@ -74,6 +74,7 @@ docker build -t groundlock-web .
 docker run --rm -p 3000:3000 groundlock-web
 groundlock export-web-env .\published\dns-fixture.json --status-base-url https://publisher.example/groundlock/status
 groundlock check-live sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status
+python .\scripts\hn_readiness.py --health-url https://publisher.example --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status
 ```
 
 ## 60-second verify
@@ -132,6 +133,12 @@ Never commit `.env`, `.env.local`, or real private keys.
 ## Show HN
 
 See [docs/show-hn-draft.md](docs/show-hn-draft.md). The current draft is marked `LOCAL_DEMO_ONLY` until stable resolver-cache warming, configured resolver targets, and status endpoints are configured.
+
+After the public deployment is live, run the fail-closed launch audit before removing that marker:
+
+```powershell
+python .\scripts\hn_readiness.py --health-url https://publisher.example --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
+```
 
 ## License
 
