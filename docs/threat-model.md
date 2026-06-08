@@ -107,5 +107,5 @@ Private lookup helpers derive HMAC lookup keys so a publisher-controlled resolve
 
 - The CLI prints DNS cache records but does not mutate production DNS.
 - The web verifier rejects remote URL fetching.
-- The demo server may generate an in-memory key unless `GROUNDLOCK_SIGNING_KEY_JWK` is configured.
-- Production publishers need stable signing keys, configured resolver-cache warming, and reachable status records.
+- The public web verifier does not issue signed receipts.
+- Production publishers need stable signing keys outside the public verifier, configured resolver-cache warming, and reachable status records.

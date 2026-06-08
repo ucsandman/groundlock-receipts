@@ -86,6 +86,10 @@ See [docs/architecture.md](docs/architecture.md) for the data flow across core, 
 
 See [docs/threat-model.md](docs/threat-model.md) for canonicalized-hash limits, DNS cache availability limits, attacker capabilities, fail-closed states, key rotation, revocation, C2PA interop boundaries, and private workflow leakage.
 
+## Security
+
+See [SECURITY.md](SECURITY.md) for the reporting policy and the public verifier boundary. The public web verifier must not issue signed receipts or hold receipt-signing private keys.
+
 ## C2PA interop
 
 GroundLock composes with C2PA rather than replacing it. The current interop target is the official C2PA Technical Specification 2.4 (April 2026): https://spec.c2pa.org/specifications/specifications/2.4/specs/C2PA_Specification.html.
@@ -100,13 +104,16 @@ groundlock sign .\notice.txt --source .\source.json --domain publisher.example -
 
 ## Environment
 
-`.env.example` contains every supported environment variable. The demo runs without secrets by generating an in-memory signing key per process.
+The local web verifier does not require environment variables or secrets. It reconstructs and verifies demo DNS-cache receipt fixtures; it does not issue receipts.
 
-- `GROUNDLOCK_SIGNING_KEY_JWK` - optional stable Ed25519 private JWK, single-line JSON. Leave blank for demo-only in-memory keys.
-- `GROUNDLOCK_SIGNING_KID` - optional key id; defaults to `demo-key-1`.
+Publisher signing keys belong in the CLI or a separately authenticated publisher workflow, not the public verifier deployment.
 
 Never commit `.env`, `.env.local`, or real private keys.
 
 ## Show HN
 
 See [docs/show-hn-draft.md](docs/show-hn-draft.md). The current draft is marked `LOCAL_DEMO_ONLY` until stable resolver-cache warming, configured resolver targets, and status endpoints are configured.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

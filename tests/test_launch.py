@@ -1,6 +1,7 @@
 import importlib.util
 import socket
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -41,6 +42,7 @@ class LaunchScriptTests(unittest.TestCase):
             skip_build=False,
             skip_tests=False,
             no_browser=True,
+            exit_after_ready=False,
         )
 
         self.assertEqual(
@@ -60,6 +62,7 @@ class LaunchScriptTests(unittest.TestCase):
             skip_build=True,
             skip_tests=True,
             no_browser=True,
+            exit_after_ready=False,
         )
 
         self.assertEqual(launch.preflight_steps(args, dependencies_installed=False), [])
@@ -94,6 +97,28 @@ class LaunchScriptTests(unittest.TestCase):
             self.assertFalse(
                 launch.wait_for_server("http://127.0.0.1:3000", timeout=0.01)
             )
+
+    def test_file_snapshot_restore_puts_generated_files_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "next-env.d.ts"
+            path.write_text("before\r\n", encoding="utf-8", newline="")
+
+            snapshot = launch.snapshot_file(path)
+            path.write_text("after\r\n", encoding="utf-8", newline="")
+            launch.restore_file_snapshot(path, snapshot)
+
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                self.assertEqual(handle.read(), "before\r\n")
+
+    def test_file_snapshot_restore_removes_file_created_during_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "next-env.d.ts"
+
+            snapshot = launch.snapshot_file(path)
+            path.write_text("created\r\n", encoding="utf-8", newline="")
+            launch.restore_file_snapshot(path, snapshot)
+
+            self.assertFalse(path.exists())
 
 
 if __name__ == "__main__":

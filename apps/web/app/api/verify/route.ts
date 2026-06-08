@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { digestText, verify, issueReceipt, type SourceOfTruth } from "@groundlock/core";
-import { getSigningKey } from "../../../lib/signing";
+import { digestText } from "@groundlock/core";
 import {
   MAX_VERIFY_BYTES,
   RATE_LIMIT_MAX,
@@ -47,31 +46,11 @@ export async function POST(req: Request) {
     return publicVerify(body);
   }
 
-  if (typeof body.candidate !== "string" || typeof body.sourceOfTruth !== "object" || body.sourceOfTruth === null) {
-    return NextResponse.json({ error: "candidate (string) and sourceOfTruth (object) are required" }, { status: 400 });
-  }
-  if (Buffer.byteLength(body.candidate, "utf8") > MAX_VERIFY_BYTES) {
-    return publicError("payload_too_large", 413);
+  if (body.candidate !== undefined || body.sourceOfTruth !== undefined) {
+    return publicError("public_signing_not_supported", 403);
   }
 
-  const source = validateSourceOfTruth(body.sourceOfTruth);
-  if (!source) {
-    return NextResponse.json({ error: "invalid_source_of_truth" }, { status: 400 });
-  }
-
-  const candidate = body.candidate;
-  const key = getSigningKey();
-
-  const result = verify(candidate, source);
-  const receipt = issueReceipt(
-    result,
-    candidate,
-    source,
-    { kid: key.kid, privateKeyJwk: key.privateKeyJwk },
-    new Date().toISOString(),
-  );
-
-  return NextResponse.json({ result, receipt, publicKeyJwk: key.publicKeyJwk });
+  return publicError("missing_public_input", 400);
 }
 
 async function readJsonBodyCapped(req: Request): Promise<{ ok: true; body: VerifyRequestBody } | { ok: false; response: NextResponse }> {
@@ -159,20 +138,4 @@ function pruneRateBuckets(now: number) {
   for (const [key, bucket] of rateBuckets) {
     if (bucket.resetAt <= now) rateBuckets.delete(key);
   }
-}
-
-function validateSourceOfTruth(value: unknown): SourceOfTruth | null {
-  if (!isRecord(value) || !Array.isArray(value.requiredFacts) || !Array.isArray(value.allowedFacts)) {
-    return null;
-  }
-  for (const fact of [...value.requiredFacts, ...value.allowedFacts]) {
-    if (!isRecord(fact) || typeof fact.label !== "string" || typeof fact.value !== "string") {
-      return null;
-    }
-  }
-  return value as unknown as SourceOfTruth;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
 }

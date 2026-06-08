@@ -1,7 +1,7 @@
 import { MarketingNav, OssPresence, ThreatModelDetail } from "../../components/MarketingSections";
 
 export const metadata = {
-  title: "Threat model - GroundLock Receipts",
+  title: "Threat model",
   description: "What GroundLock Receipts prove, what they do not prove, and why the verifier fails closed.",
 };
 

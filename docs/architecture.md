@@ -34,9 +34,9 @@ Core modules:
 
 - Homepage and threat model page.
 - `POST /api/verify` public verifier endpoint.
-- Legacy demo candidate/source signing path.
 
 The public verifier accepts `fileText` that is hashed with GroundLock text canonicalization or an already computed `sha256:` hash input. It rejects remote URLs, caps file input at 256 KiB, and rate-limits public requests.
+It does not issue receipts or expose a publisher signing key; signing belongs in the CLI or a separately authenticated publisher workflow.
 
 ## Data flow
 

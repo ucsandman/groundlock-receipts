@@ -41,7 +41,7 @@ docs/quickstart-60-second-verify.md signs a local sample, writes local DNS-cache
 
 Before removing LOCAL_DEMO_ONLY, deployment needs:
 - public HTTPS deployment of the web verifier
-- stable publisher signing key configured through deployment secrets
+- stable publisher signing key managed outside the public verifier
 - configured resolver-cache warming path
 - _truename.<domain> TXT identity record
 - gl-<hash>._groundlock.<domain> TXT manifest records
@@ -51,4 +51,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 
 Repo:
 https://github.com/ucsandman/groundlock-receipts
+
+License:
+MIT
 ```

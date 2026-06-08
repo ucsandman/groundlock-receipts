@@ -11,6 +11,7 @@ Usage:
   python launch.py --port 3005
   python launch.py --skip-tests
   python launch.py --skip-build --no-browser
+  python launch.py --skip-build --skip-tests --no-browser --exit-after-ready
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 IS_WIN = os.name == "nt"
 READY_MARKERS = ("GroundLock Receipts", "Store the proof in DNS cache")
+NEXT_ENV_PATH = ROOT / "apps" / "web" / "next-env.d.ts"
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,7 @@ class LaunchOptions:
     skip_build: bool
     skip_tests: bool
     no_browser: bool
+    exit_after_ready: bool
 
 
 def have(cmd: str) -> bool:
@@ -100,6 +103,30 @@ def find_available_port(host: str, preferred_port: int, max_attempts: int = 25) 
 
 def dependencies_installed() -> bool:
     return (ROOT / "node_modules").is_dir()
+
+
+def configure_output() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(line_buffering=True)
+
+
+def snapshot_file(path: Path) -> str | None:
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            return handle.read()
+    except FileNotFoundError:
+        return None
+
+
+def restore_file_snapshot(path: Path, snapshot: str | None) -> None:
+    try:
+        if snapshot is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(snapshot, encoding="utf-8", newline="")
+    except OSError as exc:
+        print(f"WARNING: could not restore {path}: {exc}")
 
 
 def preflight_steps(
@@ -203,6 +230,11 @@ def parse_args(argv: list[str] | None = None) -> LaunchOptions:
         dest="no_browser",
         help="start the app without opening a browser tab",
     )
+    parser.add_argument(
+        "--exit-after-ready",
+        action="store_true",
+        help="stop after the verifier answers a readiness request",
+    )
     parsed = parser.parse_args(argv)
     return LaunchOptions(
         host=parsed.host,
@@ -211,10 +243,12 @@ def parse_args(argv: list[str] | None = None) -> LaunchOptions:
         skip_build=parsed.skip_build,
         skip_tests=parsed.skip_tests,
         no_browser=parsed.no_browser,
+        exit_after_ready=parsed.exit_after_ready,
     )
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_output()
     options = parse_args(argv)
 
     print("GroundLock local launcher")
@@ -244,6 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"\nWaiting for {url}. Press Ctrl+C to stop the server.\n")
 
+    next_env_snapshot = snapshot_file(NEXT_ENV_PATH)
     proc = start_dev_server(options)
     try:
         if not wait_for_server(url, proc=proc):
@@ -264,12 +299,16 @@ def main(argv: list[str] | None = None) -> int:
             print("Opened the verifier in your browser.")
         else:
             print("Browser opening skipped (--no-browser).")
+        if options.exit_after_ready:
+            print("Exiting after readiness check (--exit-after-ready).")
+            return 0
         return proc.wait()
     except KeyboardInterrupt:
         print("\nStopping GroundLock verifier...")
         return 0
     finally:
         stop_dev_server(proc)
+        restore_file_snapshot(NEXT_ENV_PATH, next_env_snapshot)
 
 
 if __name__ == "__main__":

@@ -55,9 +55,30 @@ describe("public verifier route", () => {
         json: expect.objectContaining({ state: "UNVERIFIABLE", code: "payload_too_large" }),
       }),
     );
-    await expect(postJson({ candidate: "hello", sourceOfTruth: {} })).resolves.toEqual(
-      expect.objectContaining({ response: expect.objectContaining({ status: 400 }) }),
+    await expect(postJson({})).resolves.toEqual(
+      expect.objectContaining({
+        response: expect.objectContaining({ status: 400 }),
+        json: expect.objectContaining({ state: "UNVERIFIABLE", code: "missing_public_input" }),
+      }),
     );
+  });
+
+  it("does not issue signed receipts from the public verifier", async () => {
+    const result = await postJson({
+      candidate: "Dear Jane Roe, return $2,000.00.",
+      sourceOfTruth: {
+        requiredFacts: [{ label: "tenant", value: "Jane Roe" }],
+        allowedFacts: [{ label: "amount", value: "$2,000.00" }],
+      },
+    });
+
+    expect(result.response.status).toBe(403);
+    expect(result.json).toEqual(
+      expect.objectContaining({ state: "UNVERIFIABLE", code: "public_signing_not_supported" }),
+    );
+    expect(JSON.stringify(result.json)).not.toContain("privateKeyJwk");
+    expect(JSON.stringify(result.json)).not.toContain("publicKeyJwk");
+    expect(JSON.stringify(result.json)).not.toContain("\"receipt\"");
   });
 
   it("does not let spoofed forwarding headers bypass the public rate limit", async () => {

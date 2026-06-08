@@ -43,7 +43,7 @@ $privateJwk = $key.privateKeyJwk | ConvertTo-Json -Compress
 $publicJwk = $key.publicKeyJwk | ConvertTo-Json -Compress
 ```
 
-Do not commit demo keys. For production, use managed key storage and set `GROUNDLOCK_SIGNING_KEY_JWK` only through your deployment secret manager.
+Do not commit demo keys. For production, use managed key storage in the publisher workflow; the public web verifier should not hold a receipt-signing private key.
 
 ## Publish local fixtures
 

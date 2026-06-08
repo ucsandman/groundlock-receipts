@@ -29,6 +29,7 @@ Remote URL verification is intentionally rejected:
 - `fileText` maximum: 256 KiB.
 - Rate limit: 20 public verifier requests per 60 seconds in the demo bucket.
 - Remote URL fetching is not supported by the public endpoint.
+- Publisher signing is not supported by the public endpoint.
 - Unknown, malformed, missing, or oversized input fails closed.
 
 ### Response shape
@@ -133,9 +134,9 @@ interface PublicVerifyResponse {
 }
 ```
 
-## Legacy demo route
+### Unsupported publisher signing
 
-The same route still accepts the old playground body:
+The public verifier does not issue receipts. A caller that sends publisher inputs receives a fail-closed error:
 
 ```json
 {
@@ -147,4 +148,16 @@ The same route still accepts the old playground body:
 }
 ```
 
-That path signs a demo receipt with the process signing key and is not the public DNS-cache verifier flow.
+```json
+{
+  "state": "UNVERIFIABLE",
+  "code": "public_signing_not_supported",
+  "explanation": "The verification request could not be evaluated.",
+  "whatItProves": "...",
+  "whatItDoesNotProve": "...",
+  "receiptSummary": null,
+  "timingMs": 0
+}
+```
+
+Use the publisher CLI or a separately authenticated publisher service to issue receipts.
