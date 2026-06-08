@@ -78,7 +78,11 @@ def validate_health_body(body: str) -> CheckResult:
     checks = data.get("checks")
     if not isinstance(checks, dict):
         return CheckResult("health", False, "health response checks is not an object")
-    required = ["signerDomainConfigured", "statusBaseUrlConfigured"]
+    required = [
+        "signerDomainConfigured",
+        "siteUrlConfigured",
+        "statusBaseUrlConfigured",
+    ]
     missing = [name for name in required if checks.get(name) is not True]
     if missing:
         return CheckResult(

@@ -6,6 +6,7 @@ type HealthMode = "demo" | "live";
 
 interface HealthChecks {
   signerDomainConfigured: boolean;
+  siteUrlConfigured: boolean;
   dohEndpointConfigured: boolean;
   statusBaseUrlConfigured: boolean;
   statusRecordsConfigured: boolean;
@@ -39,6 +40,7 @@ export function GET() {
 function readHealthChecks(): HealthChecks {
   return {
     signerDomainConfigured: isConfigured(process.env.GROUNDLOCK_SIGNER_DOMAIN),
+    siteUrlConfigured: isConfigured(process.env.NEXT_PUBLIC_SITE_URL),
     dohEndpointConfigured: isConfigured(process.env.GROUNDLOCK_DOH_ENDPOINT),
     statusBaseUrlConfigured: isConfigured(process.env.GROUNDLOCK_STATUS_BASE_URL),
     statusRecordsConfigured: isConfigured(process.env.GROUNDLOCK_STATUS_RECORDS_JSON),

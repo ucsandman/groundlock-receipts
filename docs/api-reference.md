@@ -13,6 +13,7 @@ It returns `200` in demo mode. In live verifier mode, it returns `503` when `GRO
   "mode": "live",
   "checks": {
     "signerDomainConfigured": true,
+    "siteUrlConfigured": true,
     "dohEndpointConfigured": true,
     "statusBaseUrlConfigured": true,
     "statusRecordsConfigured": true

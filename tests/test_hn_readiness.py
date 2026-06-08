@@ -29,6 +29,7 @@ class HnReadinessTests(unittest.TestCase):
                     "mode": "demo",
                     "checks": {
                         "signerDomainConfigured": False,
+                        "siteUrlConfigured": False,
                         "statusBaseUrlConfigured": False,
                     },
                 }
@@ -47,6 +48,7 @@ class HnReadinessTests(unittest.TestCase):
                     "mode": "live",
                     "checks": {
                         "signerDomainConfigured": True,
+                        "siteUrlConfigured": True,
                         "statusBaseUrlConfigured": True,
                     },
                 }

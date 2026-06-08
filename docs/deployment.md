@@ -13,6 +13,7 @@ Copy `.env.example` only as a placeholder reference. Do not commit a real `.env`
 
 ```text
 GROUNDLOCK_SIGNER_DOMAIN=publisher.example
+NEXT_PUBLIC_SITE_URL=https://receipts.example.com
 GROUNDLOCK_DOH_ENDPOINT=https://cloudflare-dns.com/dns-query
 GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status
 GROUNDLOCK_RATE_LIMIT_MAX=240
@@ -20,6 +21,8 @@ GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000
 ```
 
 `GROUNDLOCK_DOH_ENDPOINT` is optional and defaults to Cloudflare DoH. The DoH response must include the DNSSEC AD signal; otherwise the verifier fails closed with `dnssec_not_validated`.
+
+`NEXT_PUBLIC_SITE_URL` should be the public HTTPS origin for the deployed verifier. It is used for canonical metadata, Open Graph images, `robots.txt`, and `sitemap.xml`. Set it before building static metadata; `robots.txt` and `sitemap.xml` also read it at runtime.
 
 `GROUNDLOCK_STATUS_BASE_URL` is required when `GROUNDLOCK_SIGNER_DOMAIN` is set.
 The status base URL should be a publisher-controlled HTTPS origin. It is used only for public key and claim status; it is not a signing service and not a timestamp authority.
@@ -165,6 +168,7 @@ The audit exits non-zero if:
 - Launch URLs and signer domain are real public hosts, not `.example`, `localhost`, or private IPs.
 - Web env generated with `groundlock export-web-env` and installed in the deployment.
 - `GROUNDLOCK_SIGNER_DOMAIN` points at the publisher domain.
+- `NEXT_PUBLIC_SITE_URL` points at the public HTTPS verifier origin.
 - `GROUNDLOCK_STATUS_BASE_URL` serves key and claim status JSON.
 - `GET /api/health` returns `200` on the deployed verifier.
 - Container image builds and its Docker healthcheck passes, if deploying by container.
