@@ -488,8 +488,16 @@ def validate_fixture_txt_records(
         normalized[normalize_domain(name)] = values
 
     identity_name = f"_truename.{expected_domain}"
-    if identity_name not in normalized:
+    identity_values = normalized.get(identity_name)
+    identity_kid = None
+    if identity_values is None:
         failures.append(f"fixture identity TXT record is missing: {identity_name}")
+    else:
+        identity_kid = parse_fixture_identity_kid(identity_values)
+        if identity_kid is None:
+            failures.append(
+                f"fixture identity TXT record is malformed: {identity_name}"
+            )
 
     manifest_suffix = f"._groundlock.{expected_domain}"
     expected_manifest_name = f"gl-{cache_label(content_hash)}{manifest_suffix}"
@@ -500,6 +508,10 @@ def validate_fixture_txt_records(
         )
 
     if manifest is not None:
+        if identity_kid is not None and identity_kid != manifest.kid:
+            failures.append(
+                "fixture identity TXT record does not match cache manifest key"
+            )
         failures.extend(
             validate_manifest_chunks(
                 normalized, expected_manifest_name, manifest.chunk_count
@@ -535,6 +547,20 @@ def parse_fixture_manifest(values: list[str]) -> FixtureManifest | None:
             chunk_count=chunk_count,
         )
     return None
+
+
+def parse_fixture_identity_kid(values: list[str]) -> str | None:
+    kids = set()
+    for value in values:
+        if not value.startswith("glt1 "):
+            continue
+        kid = parse_kv_record(value, "glt1").get("kid")
+        if not kid:
+            return None
+        kids.add(kid)
+    if len(kids) != 1:
+        return None
+    return next(iter(kids))
 
 
 def validate_manifest_chunks(
