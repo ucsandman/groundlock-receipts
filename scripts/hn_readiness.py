@@ -300,6 +300,13 @@ def validate_public_https_url(label: str, value: str) -> list[str]:
         failures.append(f"{label} must not include username or password")
     if parsed.query or parsed.fragment:
         failures.append(f"{label} must not include query or fragment")
+    try:
+        port = parsed.port
+    except ValueError:
+        failures.append(f"{label} must not include an invalid port")
+        port = None
+    if port is not None and port != 443:
+        failures.append(f"{label} must not include a non-default port")
     if not parsed.hostname:
         failures.append(f"{label} must include a hostname")
         return failures

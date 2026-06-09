@@ -121,14 +121,22 @@ describe("health route", () => {
     ["site URL", "NEXT_PUBLIC_SITE_URL", "https://bad_label.groundlock.dev", "invalid_site_url"],
     ["site URL", "NEXT_PUBLIC_SITE_URL", "https://127.0.0.1", "invalid_site_url"],
     ["site URL", "NEXT_PUBLIC_SITE_URL", "https://receipts.groundlock.dev/?preview=1", "invalid_site_url"],
+    ["site URL", "NEXT_PUBLIC_SITE_URL", "https://receipts.groundlock.dev:3000", "invalid_site_url"],
     ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "http://resolver.groundlock.dev/dns-query", "invalid_doh_endpoint"],
     ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://resolver.example/dns-query", "invalid_doh_endpoint"],
     ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://user:pass@resolver.groundlock.dev/dns-query", "invalid_doh_endpoint"],
     ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://bad_label.example/dns-query", "invalid_doh_endpoint"],
     ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://resolver.groundlock.dev/dns-query?bootstrap=1", "invalid_doh_endpoint"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://resolver.groundlock.dev:8053/dns-query", "invalid_doh_endpoint"],
     ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "not-url", "invalid_status_base_url"],
     ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "https://publisher.example/groundlock/status", "invalid_status_base_url"],
     ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "https://publisher.groundlock.dev/groundlock/status#fragment", "invalid_status_base_url"],
+    [
+      "status base URL",
+      "GROUNDLOCK_STATUS_BASE_URL",
+      "https://publisher.groundlock.dev:8443/groundlock/status",
+      "invalid_status_base_url",
+    ],
   ])("fails live mode health when %s config is invalid", async (_label, key, value, code) => {
     process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";

@@ -147,7 +147,7 @@ The local web verifier does not require environment variables or secrets. It rec
 Production verifier mode is enabled by `GROUNDLOCK_SIGNER_DOMAIN`, with `NEXT_PUBLIC_SITE_URL`, `GROUNDLOCK_DOH_ENDPOINT`, and `GROUNDLOCK_STATUS_BASE_URL` set for public launch.
 Live DoH and status fetches default to a `5000` ms timeout per external request and can be tuned with `GROUNDLOCK_FETCH_TIMEOUT_MS` from `1` through `30000`.
 Public verifier rate limits default to `240` requests per `60000` ms per app instance and can be tuned with positive safe integer `GROUNDLOCK_RATE_LIMIT_MAX` and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS` values. Invalid configured values fail live health checks and make `/api/verify` fail closed.
-Use `.env.example` for placeholder names and deployment shape; never commit real `.env` files. Public launch commands reject reserved placeholder hosts such as `.example`, `.test`, and `.localhost` in launch URLs and signer-domain fixtures; replace the sample `*.groundlock.dev` hosts with the real domains you control.
+Use `.env.example` for placeholder names and deployment shape; never commit real `.env` files. Public launch commands reject reserved placeholder hosts such as `.example`, `.test`, and `.localhost`, IP hosts, URL credentials, query/fragment suffixes, and non-default ports in launch URLs and signer-domain fixtures; replace the sample `*.groundlock.dev` hosts with the real domains you control.
 
 Publisher signing keys belong in the CLI or a separately authenticated publisher workflow, not the public verifier deployment.
 

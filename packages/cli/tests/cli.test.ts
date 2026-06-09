@@ -248,6 +248,46 @@ describe("CLI entrypoint", () => {
     expect(err).toContain("invalid_doh_endpoint");
   });
 
+  it("fails export-web-env when launch URLs use non-default ports", async () => {
+    const { dir, sourcePath, blockedPath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const outDir = path.join(dir, "publish");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await main([
+      "local-publish",
+      blockedPath,
+      "--source",
+      sourcePath,
+      "--domain",
+      "publisher.groundlock.dev",
+      "--kid",
+      key.kid,
+      "--key",
+      JSON.stringify(key.privateKeyJwk),
+      "--public-key",
+      JSON.stringify(key.publicKeyJwk),
+      "--out",
+      outDir,
+    ]);
+    stderr.mockClear();
+
+    const code = await main([
+      "export-web-env",
+      path.join(outDir, "dns-fixture.json"),
+      "--status-base-url",
+      "https://publisher.groundlock.dev:8443/groundlock/status",
+      "--site-url",
+      "https://receipts.groundlock.dev:3000/path",
+      "--doh-endpoint",
+      "https://resolver.groundlock.dev:8053/dns-query",
+    ]);
+
+    expect(code).toBe(1);
+    const err = stderr.mock.calls.map((call) => String(call[0])).join("");
+    expect(err).toContain("invalid_doh_endpoint");
+  });
+
   it("fails export-web-env when launch URLs use reserved placeholder hosts", async () => {
     const { dir, sourcePath, blockedPath } = await fixtureDir();
     const key = generateSigningKey("k1");

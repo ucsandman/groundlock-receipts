@@ -23,6 +23,7 @@ function isLaunchHttpsUrl(url: URL): boolean {
   return (
     url.protocol === "https:" &&
     isDnsHostname(url.hostname) &&
+    url.port === "" &&
     url.username === "" &&
     url.password === "" &&
     url.search === "" &&

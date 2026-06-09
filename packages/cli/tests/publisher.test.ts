@@ -600,13 +600,16 @@ describe("publisher SDK", () => {
     ["DoH endpoint", { dohEndpoint: "https://user:pass@resolver.groundlock.dev/dns-query" }, "invalid_doh_endpoint"],
     ["DoH endpoint", { dohEndpoint: "https://bad_label.groundlock.dev/dns-query" }, "invalid_doh_endpoint"],
     ["DoH endpoint", { dohEndpoint: "https://resolver.groundlock.dev/dns-query?bootstrap=1" }, "invalid_doh_endpoint"],
+    ["DoH endpoint", { dohEndpoint: "https://resolver.groundlock.dev:8053/dns-query" }, "invalid_doh_endpoint"],
     ["DoH endpoint", { dohEndpoint: "https://resolver.example/dns-query" }, "invalid_doh_endpoint"],
     ["status base URL", { statusBaseUrl: "not-url" }, "invalid_status_base_url"],
     ["status base URL", { statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status#fragment" }, "invalid_status_base_url"],
+    ["status base URL", { statusBaseUrl: "https://publisher.groundlock.dev:8443/groundlock/status" }, "invalid_status_base_url"],
     ["status base URL", { statusBaseUrl: "https://publisher.example/groundlock/status" }, "invalid_status_base_url"],
     ["site URL", { siteUrl: "http://receipts.groundlock.dev/share" }, "invalid_site_url"],
     ["site URL", { siteUrl: "https://user:pass@receipts.groundlock.dev/share" }, "invalid_site_url"],
     ["site URL", { siteUrl: "https://bad_label.groundlock.dev/share" }, "invalid_site_url"],
+    ["site URL", { siteUrl: "https://receipts.groundlock.dev:3000/share" }, "invalid_site_url"],
     ["site URL", { siteUrl: "https://receipts.example.com/share" }, "invalid_site_url"],
   ])("refuses to export a live web env block with an invalid %s", async (_label, override, error) => {
     const { dir, sourcePath, filePath } = await fixtureDir();
@@ -765,9 +768,11 @@ describe("publisher SDK", () => {
     ["DoH endpoint", { dohEndpoint: "https://user:pass@resolver.groundlock.dev/dns-query" }, "invalid_doh_endpoint"],
     ["DoH endpoint", { dohEndpoint: "https://bad_label.groundlock.dev/dns-query" }, "invalid_doh_endpoint"],
     ["DoH endpoint", { dohEndpoint: "https://resolver.groundlock.dev/dns-query?bootstrap=1" }, "invalid_doh_endpoint"],
+    ["DoH endpoint", { dohEndpoint: "https://resolver.groundlock.dev:8053/dns-query" }, "invalid_doh_endpoint"],
     ["DoH endpoint", { dohEndpoint: "https://resolver.example/dns-query" }, "invalid_doh_endpoint"],
     ["status base URL", { statusBaseUrl: "not-url" }, "invalid_status_base_url"],
     ["status base URL", { statusBaseUrl: "https://status.groundlock.dev/groundlock#fragment" }, "invalid_status_base_url"],
+    ["status base URL", { statusBaseUrl: "https://status.groundlock.dev:8443/groundlock" }, "invalid_status_base_url"],
     ["status base URL", { statusBaseUrl: "https://status.example/groundlock" }, "invalid_status_base_url"],
   ])("refuses live verification with an invalid %s", async (_label, override, error) => {
     const fetchSpy = vi.fn();
