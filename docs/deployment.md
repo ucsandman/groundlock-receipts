@@ -93,7 +93,7 @@ The launch kit is a public deployment bundle. It writes:
 - `checksums.txt` - SHA-256 hashes for `dns-fixture.json`, `dns-zone.txt`, `web.env`, `status-records.json`, `hn-readiness.ps1`, and `runbook.md`. It intentionally excludes `launch-summary.json` and itself to avoid self-referential checksum churn.
 - `hn-readiness.ps1` - a PowerShell wrapper for the final `scripts/hn_readiness.py --launch-kit ... --evidence-out ...` audit. The wrapper locates the GroundLock repo root from either the current directory or the launch-kit directory before running the Python audit.
 
-`launch-kit` reconstructs the receipt from the fixture chunks, checks the payload hash, receipt hash, signer domain, key id, active key/claim status records, and refuses to generate the bundle unless the receipt verdict is PASS. It does not mutate DNS, deploy the verifier, or store private signing keys.
+`launch-kit` reconstructs the receipt from the fixture chunks, checks the payload hash, receipt hash, signer domain, key id, active key/claim status records, and refuses to generate the bundle unless the receipt verdict is PASS. Public fixture consumers (`launch-kit`, `export-web-env`, and `warm-cache`) also reject fixtures containing private-key markers or raw private JWK material before copying or printing launch artifacts. `launch-kit` does not mutate DNS, deploy the verifier, or store private signing keys.
 
 ## Health check
 

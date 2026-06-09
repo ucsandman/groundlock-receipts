@@ -39,6 +39,9 @@ export const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 const DNS_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const RESERVED_HOSTS = new Set(["example.com", "example.net", "example.org", "localhost"]);
 const RESERVED_SUFFIXES = [".example", ".example.com", ".example.net", ".example.org", ".invalid", ".localhost", ".test"];
+const PRIVATE_KEY_MARKERS = ["privateKeyJwk", "BEGIN PRIVATE KEY", "BEGIN RSA PRIVATE KEY", "BEGIN EC PRIVATE KEY"];
+const PRIVATE_JWK_KTY_VALUES = new Set(["OKP", "RSA", "EC"]);
+const PRIVATE_JWK_TEXT_RE = /(?=.*"kty"\s*:\s*"(?:OKP|RSA|EC)")(?=.*"d"\s*:)/s;
 
 export interface SignFileOptions {
   filePath: string;
@@ -305,7 +308,7 @@ export async function verifyLive(opts: VerifyLiveOptions): Promise<TrueNameVerif
 export async function exportWebEnv(opts: ExportWebEnvOptions): Promise<string> {
   const dohEndpoint = requireHttpsUrl(opts.dohEndpoint, "missing_doh_endpoint", "invalid_doh_endpoint");
   const statusBaseUrl = requireHttpsUrl(opts.statusBaseUrl, "missing_status_base_url", "invalid_status_base_url");
-  const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
+  const fixture = await readPublicLaunchFixture(opts.fixturePath);
   const signerDomain = requireLaunchDomain(fixture.domain, "missing_signer_domain", "invalid_signer_domain");
   const records = [fixture.status.key, fixture.status.claim];
   const lines = [
@@ -323,7 +326,7 @@ export async function exportWebEnv(opts: ExportWebEnvOptions): Promise<string> {
 
 export async function warmDnsCache(opts: WarmDnsCacheOptions): Promise<WarmDnsCacheResult> {
   const dohEndpoint = requireHttpsUrl(opts.dohEndpoint, "missing_doh_endpoint", "invalid_doh_endpoint");
-  const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
+  const fixture = await readPublicLaunchFixture(opts.fixturePath);
   requireLaunchDomain(fixture.domain, "missing_signer_domain", "invalid_signer_domain");
   const resolver = createDohTxtResolver(fetchJson, dohEndpoint);
   const failures: WarmDnsCacheResult["failures"] = [];
@@ -357,7 +360,7 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
   const statusBaseUrl = requireHttpsUrl(opts.statusBaseUrl, "missing_status_base_url", "invalid_status_base_url");
   const dohEndpoint = requireHttpsUrl(opts.dohEndpoint, "missing_doh_endpoint", "invalid_doh_endpoint");
   const ttl = optionalTtl(opts.ttl);
-  const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
+  const fixture = await readPublicLaunchFixture(opts.fixturePath);
   const signerDomain = requireLaunchDomain(fixture.domain, "missing_signer_domain", "invalid_signer_domain");
   const launch = await launchFixtureReceipt(fixture, opts.fileOrHash);
 
@@ -571,6 +574,35 @@ function validateFixture(value: unknown): DnsFixture {
     throw new Error("invalid_fixture");
   }
   return value as unknown as DnsFixture;
+}
+
+async function readPublicLaunchFixture(filePath: string): Promise<DnsFixture> {
+  const value = await readJsonFileCapped(filePath);
+  assertNoPrivateKeyMaterial(value);
+  return validateFixture(value);
+}
+
+function assertNoPrivateKeyMaterial(value: unknown): void {
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  if (PRIVATE_KEY_MARKERS.some((marker) => text.includes(marker)) || containsPrivateJwk(value) || PRIVATE_JWK_TEXT_RE.test(text)) {
+    throw new Error("launch_fixture_contains_private_key");
+  }
+}
+
+function containsPrivateJwk(value: unknown): boolean {
+  if (isRecord(value)) {
+    if (
+      typeof value.d === "string" &&
+      typeof value.kty === "string" &&
+      PRIVATE_JWK_KTY_VALUES.has(value.kty)
+    ) {
+      return true;
+    }
+    return Object.values(value).some(containsPrivateJwk);
+  }
+  if (Array.isArray(value)) return value.some(containsPrivateJwk);
+  if (typeof value === "string") return PRIVATE_JWK_TEXT_RE.test(value);
+  return false;
 }
 
 async function launchFixtureReceipt(fixture: DnsFixture, fileOrHash: string): Promise<LaunchFixtureReceipt> {

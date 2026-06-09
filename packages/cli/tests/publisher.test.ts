@@ -293,6 +293,45 @@ describe("publisher SDK", () => {
     })).rejects.toThrow("invalid_signer_domain");
   });
 
+  it("refuses public launch fixtures that contain private JWK material", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.groundlock.dev",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: path.join(dir, "publish"),
+    });
+    const fixture = JSON.parse(await readFile(published.fixturePath, "utf8")) as Record<string, unknown>;
+    fixture.leakedSigner = { kty: "OKP", d: "private-scalar" };
+    await writeFile(published.fixturePath, JSON.stringify(fixture, null, 2), "utf8");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(exportWebEnv({
+      fixturePath: published.fixturePath,
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+      siteUrl: "https://receipts.groundlock.dev",
+    })).rejects.toThrow("launch_fixture_contains_private_key");
+    await expect(warmDnsCache({
+      fixturePath: published.fixturePath,
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+    })).rejects.toThrow("launch_fixture_contains_private_key");
+    await expect(createLaunchKit({
+      fixturePath: published.fixturePath,
+      outDir: path.join(dir, "launch-kit"),
+      siteUrl: "https://receipts.groundlock.dev",
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+      fileOrHash: filePath,
+    })).rejects.toThrow("launch_fixture_contains_private_key");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("refuses to export a live web env block without an explicit DoH endpoint", async () => {
     const { dir, sourcePath, filePath } = await fixtureDir();
     const key = generateSigningKey("k1");
