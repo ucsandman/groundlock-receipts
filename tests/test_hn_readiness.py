@@ -2570,25 +2570,31 @@ class HnReadinessTests(unittest.TestCase):
         )
 
     def test_builds_machine_readable_evidence_report(self) -> None:
-        args = SimpleNamespace(
-            health_url="https://receipts.groundlock.dev/api/health",
-            status_base_url="https://receipts.groundlock.dev/groundlock/status",
-            doh_endpoint="https://resolver.groundlock.dev/dns-query",
-            domain="receipts.groundlock.dev",
-            show_hn_draft="docs/show-hn-draft.md",
-            repo="ucsandman/groundlock-receipts",
-            branch="main",
-            dns_fixture="published/dns-fixture.json",
-            launch_kit="published/launch-kit",
-            file_or_hash="sha256:abc123",
-        )
-        results = [
-            hn_readiness.CheckResult("git", True, "worktree clean"),
-            hn_readiness.CheckResult("health", True, "ready"),
-        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            status = active_status_records(receipt_hash="sha256:receipt")
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(json.dumps({"status": status}), encoding="utf-8")
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev/api/health",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                show_hn_draft="docs/show-hn-draft.md",
+                repo="ucsandman/groundlock-receipts",
+                branch="main",
+                dns_fixture=str(fixture),
+                launch_kit="published/launch-kit",
+                file_or_hash="sha256:abc123",
+            )
+            results = [
+                hn_readiness.CheckResult("git", True, "worktree clean"),
+                hn_readiness.CheckResult("health", True, "ready"),
+            ]
 
-        with mock.patch.object(hn_readiness, "current_git_head", return_value="abc"):
-            report = hn_readiness.build_evidence_report(args, results)
+            with mock.patch.object(
+                hn_readiness, "current_git_head", return_value="abc"
+            ):
+                report = hn_readiness.build_evidence_report(args, results)
 
         self.assertEqual(report["schema"], "groundlock-hn-readiness-evidence/v1")
         self.assertTrue(report["ok"])
@@ -2599,10 +2605,32 @@ class HnReadinessTests(unittest.TestCase):
                 "healthUrl": "https://receipts.groundlock.dev/api/health",
                 "homepageUrl": "https://receipts.groundlock.dev/",
                 "verifyEndpoint": "https://receipts.groundlock.dev/api/verify",
-                "dnsFixture": "published/dns-fixture.json",
+                "dnsFixture": str(fixture),
                 "fileOrHash": "sha256:abc123",
                 "domain": "receipts.groundlock.dev",
                 "statusBaseUrl": "https://receipts.groundlock.dev/groundlock/status",
+                "statusEndpoints": {
+                    "key": {
+                        "lookup": "key:receipts.groundlock.dev:k1",
+                        "url": (
+                            "https://receipts.groundlock.dev/groundlock/status/key?"
+                            "lookup=key%3Areceipts.groundlock.dev%3Ak1"
+                        ),
+                        "recordSha256": hn_readiness.digest_utf8(
+                            hn_readiness.canonical_json(status["key"])
+                        ),
+                    },
+                    "claim": {
+                        "lookup": "claim:sha256:receipt",
+                        "url": (
+                            "https://receipts.groundlock.dev/groundlock/status/claim?"
+                            "lookup=claim%3Asha256%3Areceipt"
+                        ),
+                        "recordSha256": hn_readiness.digest_utf8(
+                            hn_readiness.canonical_json(status["claim"])
+                        ),
+                    },
+                },
                 "dohEndpoint": "https://resolver.groundlock.dev/dns-query",
                 "repo": "ucsandman/groundlock-receipts",
                 "branch": "main",

@@ -2195,6 +2195,23 @@ def file_sha256(path: Path) -> str:
     return f"sha256:{encoded}"
 
 
+def evidence_status_endpoints(args: argparse.Namespace) -> dict[str, object]:
+    fixture_status_records = fixture_status_records_for_launch_kit(args.dns_fixture)
+    if isinstance(fixture_status_records, str):
+        return {"error": fixture_status_records}
+    expectations, failures = status_endpoint_expectations(fixture_status_records)
+    if failures:
+        return {"error": "; ".join(failures)}
+    return {
+        kind: {
+            "lookup": lookup,
+            "url": status_endpoint_url(args.status_base_url, kind, lookup),
+            "recordSha256": digest_utf8(canonical_json(record)),
+        }
+        for kind, lookup, record in expectations
+    }
+
+
 def evidence_inputs(args: argparse.Namespace) -> dict[str, object]:
     inputs: dict[str, object] = {
         "healthUrl": args.health_url,
@@ -2204,6 +2221,7 @@ def evidence_inputs(args: argparse.Namespace) -> dict[str, object]:
         "fileOrHash": args.file_or_hash,
         "domain": args.domain,
         "statusBaseUrl": args.status_base_url,
+        "statusEndpoints": evidence_status_endpoints(args),
         "dohEndpoint": args.doh_endpoint,
         "repo": args.repo,
         "branch": args.branch,
