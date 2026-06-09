@@ -89,6 +89,9 @@ jobs:
             -e NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev \
             -e GROUNDLOCK_DOH_ENDPOINT=https://cloudflare-dns.com/dns-query \
             -e GROUNDLOCK_STATUS_BASE_URL=https://receipts.groundlock.dev/groundlock/status \
+            -e GROUNDLOCK_FETCH_TIMEOUT_MS=5000 \
+            -e GROUNDLOCK_RATE_LIMIT_MAX=240 \
+            -e GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000 \
             -e "GROUNDLOCK_STATUS_RECORDS_JSON=${STATUS_RECORDS}" \
             groundlock-web:ci
           trap 'docker stop groundlock-web-live-ci || true' EXIT

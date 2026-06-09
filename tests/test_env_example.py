@@ -21,6 +21,7 @@ class EnvExampleTests(unittest.TestCase):
             "GROUNDLOCK_SIGNER_DOMAIN",
             "GROUNDLOCK_DOH_ENDPOINT",
             "GROUNDLOCK_STATUS_BASE_URL",
+            "GROUNDLOCK_FETCH_TIMEOUT_MS",
             "GROUNDLOCK_STATUS_RECORDS_JSON",
             "GROUNDLOCK_RATE_LIMIT_MAX",
             "GROUNDLOCK_RATE_LIMIT_WINDOW_MS",
@@ -33,6 +34,9 @@ class EnvExampleTests(unittest.TestCase):
                 re.I,
             ),
         )
+        self.assert_positive_int(values["GROUNDLOCK_FETCH_TIMEOUT_MS"])
+        self.assert_positive_int(values["GROUNDLOCK_RATE_LIMIT_MAX"])
+        self.assert_positive_int(values["GROUNDLOCK_RATE_LIMIT_WINDOW_MS"])
 
     def test_status_records_example_contains_key_and_claim_records(self) -> None:
         values = commented_env_values(ENV_EXAMPLE.read_text(encoding="utf-8"))
@@ -42,6 +46,11 @@ class EnvExampleTests(unittest.TestCase):
         self.assertEqual({record["kind"] for record in records}, {"key", "claim"})
         claim = next(record for record in records if record["kind"] == "claim")
         self.assertRegex(claim["subject"]["receiptHash"], r"^sha256:.+")
+
+    def assert_positive_int(self, value: str) -> None:
+        parsed = int(value)
+        self.assertGreater(parsed, 0)
+        self.assertEqual(str(parsed), value)
 
 
 def commented_env_values(text: str) -> dict[str, str]:
