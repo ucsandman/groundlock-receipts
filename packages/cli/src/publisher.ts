@@ -579,7 +579,9 @@ function validateFixture(value: unknown): DnsFixture {
 async function readPublicLaunchFixture(filePath: string): Promise<DnsFixture> {
   const value = await readJsonFileCapped(filePath);
   assertNoPrivateKeyMaterial(value);
-  return validateFixture(value);
+  const fixture = validateFixture(value);
+  validatePublicLaunchFixtureStatuses(fixture);
+  return fixture;
 }
 
 function assertNoPrivateKeyMaterial(value: unknown): void {
@@ -603,6 +605,48 @@ function containsPrivateJwk(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsPrivateJwk);
   if (typeof value === "string") return PRIVATE_JWK_TEXT_RE.test(value);
   return false;
+}
+
+function validatePublicLaunchFixtureStatuses(fixture: DnsFixture): void {
+  if (!isKeyStatusRecordShape(fixture.status.key) || !isClaimStatusRecordShape(fixture.status.claim)) {
+    throw new Error("launch_fixture_status_malformed");
+  }
+  const key = fixture.status.key;
+  const claim = fixture.status.claim;
+  if (key.status !== "active" || claim.status !== "active") {
+    throw new Error("launch_fixture_status_not_active");
+  }
+  if (normalizeDomain(key.subject.signerDomain) !== normalizeDomain(fixture.domain) || !key.subject.kid.trim()) {
+    throw new Error("launch_fixture_status_mismatch");
+  }
+  if (!/^sha256:[A-Za-z0-9_-]+$/.test(claim.subject.receiptHash)) {
+    throw new Error("launch_fixture_status_mismatch");
+  }
+}
+
+function isKeyStatusRecordShape(value: unknown): value is KeyStatusRecord {
+  if (!isStatusRecordBase(value) || value.kind !== "key") return false;
+  return isRecord(value.subject) && typeof value.subject.signerDomain === "string" && typeof value.subject.kid === "string";
+}
+
+function isClaimStatusRecordShape(value: unknown): value is ClaimStatusRecord {
+  if (!isStatusRecordBase(value) || value.kind !== "claim") return false;
+  return isRecord(value.subject) && typeof value.subject.receiptHash === "string";
+}
+
+function isStatusRecordBase(value: unknown): value is Record<string, unknown> {
+  return (
+    isRecord(value) &&
+    value.version === "groundlock-status/v1" &&
+    typeof value.kind === "string" &&
+    typeof value.issuedAt === "string" &&
+    isStatusValue(value.status) &&
+    (value.reason === undefined || typeof value.reason === "string")
+  );
+}
+
+function isStatusValue(value: unknown): boolean {
+  return value === "active" || value === "revoked" || value === "retracted" || value === "compromised";
 }
 
 async function launchFixtureReceipt(fixture: DnsFixture, fileOrHash: string): Promise<LaunchFixtureReceipt> {

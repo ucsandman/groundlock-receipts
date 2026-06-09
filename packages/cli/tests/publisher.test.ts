@@ -332,6 +332,84 @@ describe("publisher SDK", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("refuses public launch fixtures with malformed status records", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.groundlock.dev",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: path.join(dir, "publish"),
+    });
+    const fixture = JSON.parse(await readFile(published.fixturePath, "utf8")) as Record<string, unknown>;
+    delete ((fixture.status as Record<string, unknown>).key as Record<string, unknown>).issuedAt;
+    await writeFile(published.fixturePath, JSON.stringify(fixture, null, 2), "utf8");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(exportWebEnv({
+      fixturePath: published.fixturePath,
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+      siteUrl: "https://receipts.groundlock.dev",
+    })).rejects.toThrow("launch_fixture_status_malformed");
+    await expect(warmDnsCache({
+      fixturePath: published.fixturePath,
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+    })).rejects.toThrow("launch_fixture_status_malformed");
+    await expect(createLaunchKit({
+      fixturePath: published.fixturePath,
+      outDir: path.join(dir, "launch-kit"),
+      siteUrl: "https://receipts.groundlock.dev",
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+      fileOrHash: filePath,
+    })).rejects.toThrow("launch_fixture_status_malformed");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("refuses public launch fixtures with unusable status records", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.groundlock.dev",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: path.join(dir, "publish"),
+    });
+    const fixture = JSON.parse(await readFile(published.fixturePath, "utf8")) as Record<string, unknown>;
+    (((fixture.status as Record<string, unknown>).claim as Record<string, unknown>).subject as Record<string, unknown>).receiptHash = "not-sha256";
+    await writeFile(published.fixturePath, JSON.stringify(fixture, null, 2), "utf8");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(exportWebEnv({
+      fixturePath: published.fixturePath,
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+      siteUrl: "https://receipts.groundlock.dev",
+    })).rejects.toThrow("launch_fixture_status_mismatch");
+    await expect(warmDnsCache({
+      fixturePath: published.fixturePath,
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+    })).rejects.toThrow("launch_fixture_status_mismatch");
+    await expect(createLaunchKit({
+      fixturePath: published.fixturePath,
+      outDir: path.join(dir, "launch-kit"),
+      siteUrl: "https://receipts.groundlock.dev",
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+      fileOrHash: filePath,
+    })).rejects.toThrow("launch_fixture_status_mismatch");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("refuses to export a live web env block without an explicit DoH endpoint", async () => {
     const { dir, sourcePath, filePath } = await fixtureDir();
     const key = generateSigningKey("k1");
