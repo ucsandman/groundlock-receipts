@@ -797,6 +797,16 @@ class HnReadinessTests(unittest.TestCase):
             "https://receipts.groundlock.dev/api/verify",
         )
 
+    def test_discovery_endpoints_strip_health_endpoint(self) -> None:
+        self.assertEqual(
+            hn_readiness.robots_endpoint("https://receipts.groundlock.dev/api/health"),
+            "https://receipts.groundlock.dev/robots.txt",
+        )
+        self.assertEqual(
+            hn_readiness.sitemap_endpoint("https://receipts.groundlock.dev/api/health"),
+            "https://receipts.groundlock.dev/sitemap.xml",
+        )
+
     def test_builds_web_verify_request_from_hash_or_file(self) -> None:
         self.assertEqual(
             hn_readiness.build_web_verify_body("sha256:abc123"),
@@ -1682,6 +1692,62 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("GroundLock Receipts", result.detail)
 
+    def test_public_discovery_files_accept_launch_origin(self) -> None:
+        robots = """
+        User-Agent: *
+        Allow: /
+        Disallow: /api/
+        Disallow: /groundlock/status/
+        Sitemap: https://receipts.groundlock.dev/sitemap.xml
+        """
+        sitemap = """
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>https://receipts.groundlock.dev/</loc></url>
+          <url><loc>https://receipts.groundlock.dev/threat-model</loc></url>
+        </urlset>
+        """
+
+        result = hn_readiness.validate_public_discovery_files(
+            robots, sitemap, "https://receipts.groundlock.dev/api/health"
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.name, "discovery")
+
+    def test_public_discovery_files_reject_stale_origin(self) -> None:
+        robots = """
+        User-Agent: *
+        Allow: /
+        Disallow: /api/
+        Disallow: /groundlock/status/
+        Sitemap: http://localhost:3000/sitemap.xml
+        """
+        sitemap = """
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>http://localhost:3000/</loc></url>
+          <url><loc>https://receipts.groundlock.dev/api/health</loc></url>
+        </urlset>
+        """
+
+        result = hn_readiness.validate_public_discovery_files(
+            robots, sitemap, "https://receipts.groundlock.dev/"
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("robots.txt missing sitemap", result.detail)
+        self.assertIn("outside launch origin", result.detail)
+        self.assertIn("non-public path", result.detail)
+
+    def test_public_discovery_files_reject_invalid_sitemap_xml(self) -> None:
+        result = hn_readiness.validate_public_discovery_files(
+            "User-Agent: *\nSitemap: https://receipts.groundlock.dev/sitemap.xml\n",
+            "<urlset>",
+            "https://receipts.groundlock.dev/",
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("invalid XML", result.detail)
+
     def test_launch_kit_check_accepts_matching_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             kit = write_launch_kit(Path(tmp))
@@ -2540,6 +2606,9 @@ class HnReadinessTests(unittest.TestCase):
             mock.patch.object(hn_readiness, "check_health_url", return_value=ok),
             mock.patch.object(hn_readiness, "check_homepage_metadata", return_value=ok),
             mock.patch.object(
+                hn_readiness, "check_public_discovery_files", return_value=ok
+            ) as check_public_discovery_files,
+            mock.patch.object(
                 hn_readiness, "check_security_headers", return_value=ok
             ) as check_security_headers,
             mock.patch.object(
@@ -2555,6 +2624,9 @@ class HnReadinessTests(unittest.TestCase):
 
         self.assertIn("web-verify", [result.name for result in results])
         self.assertEqual(results[-1].name, "web-verify")
+        check_public_discovery_files.assert_called_once_with(
+            "https://receipts.groundlock.dev"
+        )
         check_security_headers.assert_called_once_with(
             "https://receipts.groundlock.dev"
         )
@@ -2605,6 +2677,8 @@ class HnReadinessTests(unittest.TestCase):
                 "healthUrl": "https://receipts.groundlock.dev/api/health",
                 "homepageUrl": "https://receipts.groundlock.dev/",
                 "verifyEndpoint": "https://receipts.groundlock.dev/api/verify",
+                "robotsEndpoint": "https://receipts.groundlock.dev/robots.txt",
+                "sitemapEndpoint": "https://receipts.groundlock.dev/sitemap.xml",
                 "dnsFixture": str(fixture),
                 "fileOrHash": "sha256:abc123",
                 "domain": "receipts.groundlock.dev",

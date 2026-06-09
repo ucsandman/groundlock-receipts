@@ -15,6 +15,7 @@ import subprocess
 import sys
 import unicodedata
 import urllib.request
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -248,6 +249,14 @@ def verify_endpoint(url: str) -> str:
     return f"{homepage_url(url).rstrip('/')}/api/verify"
 
 
+def robots_endpoint(url: str) -> str:
+    return f"{homepage_url(url).rstrip('/')}/robots.txt"
+
+
+def sitemap_endpoint(url: str) -> str:
+    return f"{homepage_url(url).rstrip('/')}/sitemap.xml"
+
+
 def uses_same_origin_status(
     health_url: str | None, status_base_url: str | None
 ) -> bool:
@@ -435,6 +444,90 @@ def check_homepage_metadata(url: str, timeout: float = 10.0) -> CheckResult:
         return CheckResult("metadata", False, f"{endpoint} failed: {exc}")
 
     return validate_homepage_metadata(body, endpoint)
+
+
+def validate_public_discovery_files(
+    robots_text: str, sitemap_text: str, expected_home_url: str
+) -> CheckResult:
+    expected_home = homepage_url(expected_home_url)
+    expected_origin = url_origin(expected_home)
+    if expected_origin is None:
+        return CheckResult("discovery", False, "expected homepage URL is malformed")
+    failures = []
+    expected_sitemap = f"{expected_origin}/sitemap.xml"
+    robots_lines = {
+        line.strip().lower()
+        for line in robots_text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    required_robots_lines = {
+        "user-agent: *",
+        "allow: /",
+        "disallow: /api/",
+        "disallow: /groundlock/status/",
+        f"sitemap: {expected_sitemap}".lower(),
+    }
+    for line in sorted(required_robots_lines):
+        if line not in robots_lines:
+            failures.append(f"robots.txt missing {line}")
+
+    try:
+        sitemap = ET.fromstring(sitemap_text)
+    except ET.ParseError as exc:
+        return CheckResult("discovery", False, f"sitemap.xml is invalid XML: {exc}")
+
+    locs = [
+        str(element.text or "").strip()
+        for element in sitemap.iter()
+        if element.tag == "loc" or element.tag.endswith("}loc")
+    ]
+    required_locs = {expected_home, f"{expected_origin}/threat-model"}
+    missing_locs = required_locs.difference(locs)
+    for loc in sorted(missing_locs):
+        failures.append(f"sitemap.xml missing {loc}")
+    for loc in locs:
+        if url_origin(loc) != expected_origin:
+            failures.append(f"sitemap.xml loc is outside launch origin: {loc!r}")
+            continue
+        path = urlparse(loc).path
+        if path.startswith("/api/") or path.startswith("/groundlock/status/"):
+            failures.append(f"sitemap.xml exposes non-public path: {loc!r}")
+
+    if failures:
+        return CheckResult("discovery", False, "; ".join(failures))
+    return CheckResult(
+        "discovery",
+        True,
+        "robots.txt and sitemap.xml match the public launch origin",
+    )
+
+
+def check_public_discovery_files(url: str, timeout: float = 10.0) -> CheckResult:
+    bodies: dict[str, str] = {}
+    endpoints = {
+        "robots.txt": robots_endpoint(url),
+        "sitemap.xml": sitemap_endpoint(url),
+    }
+    for label, endpoint in endpoints.items():
+        request = urllib.request.Request(
+            endpoint, headers={"User-Agent": "groundlock-hn-readiness/1"}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                body = response.read(512_000).decode("utf-8", errors="replace")
+                if response.status != 200:
+                    return CheckResult(
+                        "discovery",
+                        False,
+                        f"{endpoint} returned HTTP {response.status}",
+                    )
+                bodies[label] = body
+        except Exception as exc:
+            return CheckResult("discovery", False, f"{endpoint} failed: {exc}")
+
+    return validate_public_discovery_files(
+        bodies["robots.txt"], bodies["sitemap.xml"], url
+    )
 
 
 def header_value(headers: object, name: str) -> str | None:
@@ -2217,6 +2310,8 @@ def evidence_inputs(args: argparse.Namespace) -> dict[str, object]:
         "healthUrl": args.health_url,
         "homepageUrl": homepage_url(args.health_url),
         "verifyEndpoint": verify_endpoint(args.health_url),
+        "robotsEndpoint": robots_endpoint(args.health_url),
+        "sitemapEndpoint": sitemap_endpoint(args.health_url),
         "dnsFixture": args.dns_fixture,
         "fileOrHash": args.file_or_hash,
         "domain": args.domain,
@@ -2334,6 +2429,7 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
         check_ci(args.repo, args.branch),
         check_health_url(args.health_url, args.status_base_url),
         check_homepage_metadata(args.health_url),
+        check_public_discovery_files(args.health_url),
         check_security_headers(args.health_url),
         check_status_endpoints(args.status_base_url, fixture_status_records),
         check_warm_cache(args.dns_fixture, args.doh_endpoint),
