@@ -1,6 +1,6 @@
 import { jsonNoStore } from "../../../lib/http";
 import { configuredFetchTimeoutMs } from "../../../lib/fetch-timeout";
-import { configuredLaunchHttpsUrl } from "../../../lib/launch-url";
+import { configuredLaunchDomain, configuredLaunchHttpsUrl } from "../../../lib/launch-url";
 import { configuredRateLimit } from "../../../lib/rate-limit";
 import { readStatusRecords } from "../../../lib/status-endpoint";
 import type { StatusRecord } from "@groundlock/core";
@@ -58,6 +58,10 @@ export function GET() {
       },
       { status: 503 },
     );
+  }
+
+  if (mode === "live" && configuredLaunchDomain(process.env.GROUNDLOCK_SIGNER_DOMAIN) === null) {
+    return liveConfigError("invalid_signer_domain", checks);
   }
 
   if (mode === "live" && checks.siteUrlConfigured && !isConfiguredHttpsUrl(process.env.NEXT_PUBLIC_SITE_URL)) {

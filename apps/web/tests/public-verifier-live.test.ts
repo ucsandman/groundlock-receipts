@@ -33,9 +33,9 @@ afterEach(() => {
 
 describe("live public verifier", () => {
   it("does not initialize demo signing material when live mode is configured", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.groundlock.dev";
     delete process.env.GROUNDLOCK_DOH_ENDPOINT;
-    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.example/groundlock";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.groundlock.dev/groundlock";
     const actualCore = await vi.importActual<typeof import("@groundlock/core")>("@groundlock/core");
     const generateSigningKeySpy = vi.fn(() => {
       throw new Error("demo signing key should not be generated in live mode");
@@ -56,9 +56,9 @@ describe("live public verifier", () => {
   });
 
   it("fails closed when live mode lacks an explicit DoH endpoint", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.groundlock.dev";
     delete process.env.GROUNDLOCK_DOH_ENDPOINT;
-    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.example/groundlock";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.groundlock.dev/groundlock";
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -73,9 +73,9 @@ describe("live public verifier", () => {
   });
 
   it("fails closed before network calls when live mode has an invalid fetch timeout", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.example";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
-    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.example/groundlock";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.groundlock.dev";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.groundlock.dev/groundlock";
     process.env.GROUNDLOCK_FETCH_TIMEOUT_MS = "0";
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
@@ -91,16 +91,20 @@ describe("live public verifier", () => {
   });
 
   it.each([
-    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "http://resolver.example/dns-query", "doh_resolver_invalid"],
-    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://user:pass@resolver.example/dns-query", "doh_resolver_invalid"],
+    ["signer domain", "GROUNDLOCK_SIGNER_DOMAIN", "live.example", "signer_domain_invalid"],
+    ["signer domain", "GROUNDLOCK_SIGNER_DOMAIN", "bad_label.groundlock.dev", "signer_domain_invalid"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "http://resolver.groundlock.dev/dns-query", "doh_resolver_invalid"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://resolver.example/dns-query", "doh_resolver_invalid"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://user:pass@resolver.groundlock.dev/dns-query", "doh_resolver_invalid"],
     ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://bad_label.example/dns-query", "doh_resolver_invalid"],
-    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://resolver.example/dns-query?bootstrap=1", "doh_resolver_invalid"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://resolver.groundlock.dev/dns-query?bootstrap=1", "doh_resolver_invalid"],
     ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "not-url", "status_resolver_invalid"],
-    ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "https://status.example/groundlock#fragment", "status_resolver_invalid"],
+    ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "https://status.example/groundlock", "status_resolver_invalid"],
+    ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "https://status.groundlock.dev/groundlock#fragment", "status_resolver_invalid"],
   ])("fails closed when live mode has an invalid %s", async (_label, key, value, code) => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.example";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
-    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.example/groundlock";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.groundlock.dev";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.groundlock.dev/groundlock";
     process.env[key] = value;
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
@@ -116,9 +120,9 @@ describe("live public verifier", () => {
   });
 
   it("bounds live resolver fetches with an abort timeout", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.example";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
-    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.example/groundlock";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.groundlock.dev";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.groundlock.dev/groundlock";
     process.env.GROUNDLOCK_FETCH_TIMEOUT_MS = "1";
     let sawAbortSignal = false;
     let sawAbort = false;
@@ -156,7 +160,7 @@ describe("live public verifier", () => {
   });
 
   it("reconstructs receipts from configured DoH TXT records and HTTP status records", async () => {
-    const signerDomain = "live.example";
+    const signerDomain = "live.groundlock.dev";
     const key = generateSigningKey("live-key-1");
     const receipt = issueVerifiedReceipt(
       liveCandidate,
@@ -184,13 +188,13 @@ describe("live public verifier", () => {
     const fetchedStatusLookups: string[] = [];
 
     process.env.GROUNDLOCK_SIGNER_DOMAIN = signerDomain;
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
-    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.example/groundlock";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.groundlock.dev/groundlock";
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
         const url = new URL(String(input));
-        if (url.origin === "https://resolver.example") {
+        if (url.origin === "https://resolver.groundlock.dev") {
           const name = url.searchParams.get("name") ?? "";
           return jsonResponse({
             Status: txt[name] ? 0 : 3,
@@ -198,11 +202,11 @@ describe("live public verifier", () => {
             Answer: (txt[name] ?? []).map((data) => ({ type: 16, data: `"${data}"` })),
           });
         }
-        if (url.href.startsWith("https://status.example/groundlock/key?")) {
+        if (url.href.startsWith("https://status.groundlock.dev/groundlock/key?")) {
           fetchedStatusLookups.push(url.searchParams.get("lookup") ?? "");
           return jsonResponse(keyStatus);
         }
-        if (url.href.startsWith("https://status.example/groundlock/claim?")) {
+        if (url.href.startsWith("https://status.groundlock.dev/groundlock/claim?")) {
           fetchedStatusLookups.push(url.searchParams.get("lookup") ?? "");
           return jsonResponse(claimStatus);
         }

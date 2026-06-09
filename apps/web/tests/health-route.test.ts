@@ -51,7 +51,7 @@ describe("health route", () => {
   });
 
   it("fails live mode health when required status config is missing", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
     delete process.env.GROUNDLOCK_STATUS_BASE_URL;
 
@@ -67,14 +67,14 @@ describe("health route", () => {
       mode: "live",
       code: "missing_status_base_url",
     }));
-    expect(JSON.stringify(body)).not.toContain("publisher.example");
+    expect(JSON.stringify(body)).not.toContain("publisher.groundlock.dev");
   });
 
   it("fails live mode health when explicit DoH config is missing", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
     delete process.env.GROUNDLOCK_DOH_ENDPOINT;
-    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.example/groundlock/status";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.groundlock.dev/groundlock/status";
 
     const route = await import("../app/api/health/route");
     const response = await route.GET();
@@ -88,14 +88,14 @@ describe("health route", () => {
       mode: "live",
       code: "missing_doh_endpoint",
     }));
-    expect(JSON.stringify(body)).not.toContain("publisher.example");
+    expect(JSON.stringify(body)).not.toContain("publisher.groundlock.dev");
   });
 
   it("fails live mode health when the public site URL is missing", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     delete process.env.NEXT_PUBLIC_SITE_URL;
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
-    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.example/groundlock/status";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.groundlock.dev/groundlock/status";
 
     const route = await import("../app/api/health/route");
     const response = await route.GET();
@@ -109,26 +109,31 @@ describe("health route", () => {
       mode: "live",
       code: "missing_site_url",
     }));
-    expect(JSON.stringify(body)).not.toContain("resolver.example");
+    expect(JSON.stringify(body)).not.toContain("resolver.groundlock.dev");
   });
 
   it.each([
+    ["signer domain", "GROUNDLOCK_SIGNER_DOMAIN", "publisher.example", "invalid_signer_domain"],
+    ["signer domain", "GROUNDLOCK_SIGNER_DOMAIN", "bad_label.groundlock.dev", "invalid_signer_domain"],
     ["site URL", "NEXT_PUBLIC_SITE_URL", "not-url", "invalid_site_url"],
+    ["site URL", "NEXT_PUBLIC_SITE_URL", "https://receipts.example.com", "invalid_site_url"],
     ["site URL", "NEXT_PUBLIC_SITE_URL", "https://user:pass@receipts.groundlock.dev", "invalid_site_url"],
     ["site URL", "NEXT_PUBLIC_SITE_URL", "https://bad_label.groundlock.dev", "invalid_site_url"],
     ["site URL", "NEXT_PUBLIC_SITE_URL", "https://127.0.0.1", "invalid_site_url"],
     ["site URL", "NEXT_PUBLIC_SITE_URL", "https://receipts.groundlock.dev/?preview=1", "invalid_site_url"],
-    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "http://resolver.example/dns-query", "invalid_doh_endpoint"],
-    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://user:pass@resolver.example/dns-query", "invalid_doh_endpoint"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "http://resolver.groundlock.dev/dns-query", "invalid_doh_endpoint"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://resolver.example/dns-query", "invalid_doh_endpoint"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://user:pass@resolver.groundlock.dev/dns-query", "invalid_doh_endpoint"],
     ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://bad_label.example/dns-query", "invalid_doh_endpoint"],
-    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://resolver.example/dns-query?bootstrap=1", "invalid_doh_endpoint"],
+    ["DoH endpoint", "GROUNDLOCK_DOH_ENDPOINT", "https://resolver.groundlock.dev/dns-query?bootstrap=1", "invalid_doh_endpoint"],
     ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "not-url", "invalid_status_base_url"],
-    ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "https://publisher.example/groundlock/status#fragment", "invalid_status_base_url"],
+    ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "https://publisher.example/groundlock/status", "invalid_status_base_url"],
+    ["status base URL", "GROUNDLOCK_STATUS_BASE_URL", "https://publisher.groundlock.dev/groundlock/status#fragment", "invalid_status_base_url"],
   ])("fails live mode health when %s config is invalid", async (_label, key, value, code) => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
-    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.example/groundlock/status";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.groundlock.dev/groundlock/status";
     process.env[key] = value;
 
     const route = await import("../app/api/health/route");
@@ -147,10 +152,10 @@ describe("health route", () => {
   });
 
   it("fails live mode health when the external fetch timeout is invalid", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
-    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.example/groundlock/status";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.groundlock.dev/groundlock/status";
     process.env.GROUNDLOCK_FETCH_TIMEOUT_MS = "0";
 
     const route = await import("../app/api/health/route");
@@ -165,17 +170,17 @@ describe("health route", () => {
       mode: "live",
       code: "invalid_fetch_timeout",
     }));
-    expect(JSON.stringify(body)).not.toContain("resolver.example");
+    expect(JSON.stringify(body)).not.toContain("resolver.groundlock.dev");
   });
 
   it.each([
     ["max", "GROUNDLOCK_RATE_LIMIT_MAX", "0"],
     ["window", "GROUNDLOCK_RATE_LIMIT_WINDOW_MS", "not-a-number"],
   ])("fails live mode health when rate limit %s config is invalid", async (_label, key, value) => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
-    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.example/groundlock/status";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.groundlock.dev/groundlock/status";
     process.env[key] = value;
 
     const route = await import("../app/api/health/route");
@@ -194,9 +199,9 @@ describe("health route", () => {
   });
 
   it("fails live mode health when bundled same-origin status records are missing", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev/app";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
     process.env.GROUNDLOCK_STATUS_BASE_URL = "https://receipts.groundlock.dev/groundlock/status";
     delete process.env.GROUNDLOCK_STATUS_RECORDS_JSON;
 
@@ -216,9 +221,9 @@ describe("health route", () => {
   });
 
   it("fails live mode health when bundled same-origin status records are malformed", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
     process.env.GROUNDLOCK_STATUS_BASE_URL = "https://receipts.groundlock.dev/groundlock/status";
     process.env.GROUNDLOCK_STATUS_RECORDS_JSON = "not-json";
 
@@ -238,15 +243,15 @@ describe("health route", () => {
   });
 
   it("fails live mode health when any bundled same-origin status record has malformed shape", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
     process.env.GROUNDLOCK_STATUS_BASE_URL = "https://receipts.groundlock.dev/groundlock/status";
     process.env.GROUNDLOCK_STATUS_RECORDS_JSON = JSON.stringify([
       {
         version: "groundlock-status/v1",
         kind: "key",
-        subject: { signerDomain: "publisher.example", kid: "k1" },
+        subject: { signerDomain: "publisher.groundlock.dev", kid: "k1" },
         status: "active",
         issuedAt: "2026-06-08T00:00:00.000Z",
       },
@@ -270,19 +275,19 @@ describe("health route", () => {
       mode: "live",
       code: "status_records_malformed",
     }));
-    expect(JSON.stringify(body)).not.toContain("publisher.example");
+    expect(JSON.stringify(body)).not.toContain("publisher.groundlock.dev");
   });
 
   it("fails live mode health when bundled same-origin status records lack a key or claim record", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
     process.env.GROUNDLOCK_STATUS_BASE_URL = "https://receipts.groundlock.dev/groundlock/status";
     process.env.GROUNDLOCK_STATUS_RECORDS_JSON = JSON.stringify([
       {
         version: "groundlock-status/v1",
         kind: "key",
-        subject: { signerDomain: "publisher.example", kid: "k1" },
+        subject: { signerDomain: "publisher.groundlock.dev", kid: "k1" },
         status: "active",
         issuedAt: "2026-06-08T00:00:00.000Z",
       },
@@ -300,19 +305,19 @@ describe("health route", () => {
       mode: "live",
       code: "status_records_incomplete",
     }));
-    expect(JSON.stringify(body)).not.toContain("publisher.example");
+    expect(JSON.stringify(body)).not.toContain("publisher.groundlock.dev");
   });
 
   it("fails live mode health when bundled key status is for a different signer domain", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
     process.env.GROUNDLOCK_STATUS_BASE_URL = "https://receipts.groundlock.dev/groundlock/status";
     process.env.GROUNDLOCK_STATUS_RECORDS_JSON = JSON.stringify([
       {
         version: "groundlock-status/v1",
         kind: "key",
-        subject: { signerDomain: "other.example", kid: "k1" },
+        subject: { signerDomain: "other.groundlock.dev", kid: "k1" },
         status: "active",
         issuedAt: "2026-06-08T00:00:00.000Z",
       },
@@ -337,19 +342,19 @@ describe("health route", () => {
       mode: "live",
       code: "status_records_incomplete",
     }));
-    expect(JSON.stringify(body)).not.toContain("other.example");
+    expect(JSON.stringify(body)).not.toContain("other.groundlock.dev");
   });
 
   it("fails live mode health when bundled same-origin status records are not active", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
     process.env.GROUNDLOCK_STATUS_BASE_URL = "https://receipts.groundlock.dev/groundlock/status";
     process.env.GROUNDLOCK_STATUS_RECORDS_JSON = JSON.stringify([
       {
         version: "groundlock-status/v1",
         kind: "key",
-        subject: { signerDomain: "publisher.example", kid: "k1" },
+        subject: { signerDomain: "publisher.groundlock.dev", kid: "k1" },
         status: "revoked",
         issuedAt: "2026-06-08T00:00:00.000Z",
       },
@@ -374,14 +379,14 @@ describe("health route", () => {
       mode: "live",
       code: "status_records_incomplete",
     }));
-    expect(JSON.stringify(body)).not.toContain("publisher.example");
+    expect(JSON.stringify(body)).not.toContain("publisher.groundlock.dev");
   });
 
   it("allows externally managed status records without bundled status JSON", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
-    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.example/groundlock/status";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.groundlock.dev/groundlock/status";
     delete process.env.GROUNDLOCK_STATUS_RECORDS_JSON;
 
     const route = await import("../app/api/health/route");
@@ -401,15 +406,15 @@ describe("health route", () => {
   });
 
   it("reports live mode as ready when required config is present", async () => {
-    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.groundlock.dev";
     process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
-    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.groundlock.dev/dns-query";
     process.env.GROUNDLOCK_STATUS_BASE_URL = "https://receipts.groundlock.dev/groundlock/status";
     process.env.GROUNDLOCK_STATUS_RECORDS_JSON = JSON.stringify([
       {
         version: "groundlock-status/v1",
         kind: "key",
-        subject: { signerDomain: "publisher.example", kid: "k1" },
+        subject: { signerDomain: "publisher.groundlock.dev", kid: "k1" },
         status: "active",
         issuedAt: "2026-06-08T00:00:00.000Z",
       },
@@ -440,7 +445,7 @@ describe("health route", () => {
         statusRecordsConfigured: true,
       },
     });
-    expect(JSON.stringify(body)).not.toContain("resolver.example");
+    expect(JSON.stringify(body)).not.toContain("resolver.groundlock.dev");
   });
 });
 

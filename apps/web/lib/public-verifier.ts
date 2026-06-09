@@ -20,7 +20,7 @@ import {
 } from "@groundlock/core";
 import { cleanCandidate, exampleSource, fabricatingCandidate } from "./examples";
 import { MAX_FETCH_TIMEOUT_MS, configuredFetchTimeoutMs } from "./fetch-timeout";
-import { configuredLaunchHttpsUrl } from "./launch-url";
+import { configuredLaunchDomain, configuredLaunchHttpsUrl } from "./launch-url";
 export { RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS } from "./rate-limit";
 
 export const MAX_VERIFY_BYTES = 256 * 1024;
@@ -56,6 +56,14 @@ export function demoInputs() {
 export async function verifyPublicContentHash(contentHash: string): Promise<TrueNameVerifyResult> {
   const liveConfig = liveVerifierConfigFromEnv();
   if (liveConfig) {
+    const signerDomain = configuredLaunchDomain(liveConfig.signerDomain);
+    if (!signerDomain) {
+      return {
+        state: "UNVERIFIABLE",
+        code: "signer_domain_invalid",
+        explanation: "GROUNDLOCK_SIGNER_DOMAIN must be a valid public DNS name when configured",
+      };
+    }
     if (!liveConfig.statusBaseUrl) {
       return {
         state: "UNVERIFIABLE",
@@ -95,7 +103,7 @@ export async function verifyPublicContentHash(contentHash: string): Promise<True
       };
     }
     const fetcher = fetchJsonWithTimeout(fetchTimeoutMs);
-    return verifyTrueName(contentHash, liveConfig.signerDomain, {
+    return verifyTrueName(contentHash, signerDomain, {
       ...createDohTxtResolver(fetcher, dohEndpoint),
       statusResolver: createHttpStatusResolver(fetcher, statusBaseUrl),
     });
