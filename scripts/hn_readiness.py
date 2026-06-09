@@ -58,7 +58,8 @@ LAUNCH_KIT_ARTIFACTS = {
     "runbook": "runbook.md",
     "checksums": "checksums.txt",
 }
-LAUNCH_KIT_ALLOWED_EXTRA_FILES = {"hn-readiness-evidence.json"}
+LAUNCH_KIT_EVIDENCE_ARTIFACT = "hn-readiness-evidence.json"
+LAUNCH_KIT_ALLOWED_EXTRA_FILES = {LAUNCH_KIT_EVIDENCE_ARTIFACT}
 LAUNCH_KIT_CHECKSUMMED_ARTIFACTS = {
     key: LAUNCH_KIT_ARTIFACTS[key]
     for key in (
@@ -2112,6 +2113,29 @@ def write_evidence_report(
     return CheckResult("evidence", True, f"wrote readiness evidence to {path}")
 
 
+def check_evidence_target(path: str, launch_kit: str | None = None) -> CheckResult:
+    target = Path(path)
+    if target.exists() and target.is_dir():
+        return CheckResult("evidence-target", False, "evidence-out is a directory")
+
+    if launch_kit:
+        launch_root = Path(launch_kit).resolve()
+        resolved_target = target.resolve()
+        allowed_target = (launch_root / LAUNCH_KIT_EVIDENCE_ARTIFACT).resolve()
+        if (
+            resolved_target.is_relative_to(launch_root)
+            and resolved_target != allowed_target
+        ):
+            return CheckResult(
+                "evidence-target",
+                False,
+                "evidence-out inside launch kit must be "
+                "hn-readiness-evidence.json at the launch kit root",
+            )
+
+    return CheckResult("evidence-target", True, "evidence output target is valid")
+
+
 def run_checks(args: argparse.Namespace) -> list[CheckResult]:
     preflight = [
         check_git_clean(),
@@ -2122,6 +2146,9 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
     launch_kit = getattr(args, "launch_kit", None)
     if launch_kit:
         preflight.append(check_launch_kit(launch_kit, args))
+    evidence_out = getattr(args, "evidence_out", None)
+    if evidence_out:
+        preflight.append(check_evidence_target(evidence_out, launch_kit))
     if any(not result.ok for result in preflight):
         return preflight
 

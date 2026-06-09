@@ -2298,6 +2298,41 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(results[-1].ok)
         check_launch_kit.assert_called_once_with("published/launch-kit", args)
 
+    def test_run_checks_stops_before_external_checks_when_evidence_target_fails(
+        self,
+    ) -> None:
+        args = SimpleNamespace(
+            health_url="https://receipts.groundlock.dev",
+            status_base_url="https://receipts.groundlock.dev/groundlock/status",
+            doh_endpoint="https://resolver.groundlock.dev/dns-query",
+            domain="receipts.groundlock.dev",
+            show_hn_draft="ignored.md",
+            repo="ucsandman/groundlock-receipts",
+            branch="main",
+            dns_fixture="published/launch-kit/dns-fixture.json",
+            launch_kit="published/launch-kit",
+            file_or_hash="sha256:abc123",
+            evidence_out="published/launch-kit/debug-evidence.json",
+        )
+
+        ok = hn_readiness.CheckResult("mock", True, "ok")
+        with (
+            mock.patch.object(hn_readiness, "check_git_clean", return_value=ok),
+            mock.patch.object(hn_readiness, "check_show_hn_draft", return_value=ok),
+            mock.patch.object(hn_readiness, "check_dns_fixture", return_value=ok),
+            mock.patch.object(hn_readiness, "check_launch_kit", return_value=ok),
+            mock.patch.object(
+                hn_readiness,
+                "check_ci",
+                side_effect=AssertionError("external checks should not run"),
+            ),
+        ):
+            results = hn_readiness.run_checks(args)
+
+        self.assertEqual(results[-1].name, "evidence-target")
+        self.assertFalse(results[-1].ok)
+        self.assertIn("hn-readiness-evidence.json", results[-1].detail)
+
     def test_run_checks_includes_deployed_web_verify_after_preflight(self) -> None:
         args = SimpleNamespace(
             health_url="https://receipts.groundlock.dev",
@@ -2402,6 +2437,49 @@ class HnReadinessTests(unittest.TestCase):
         self.assertTrue(
             str(report["securityHeaderContract"]["sha256"]).startswith("sha256:")
         )
+
+    def test_evidence_target_rejects_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = hn_readiness.check_evidence_target(tmp)
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.name, "evidence-target")
+        self.assertIn("directory", result.detail)
+
+    def test_evidence_target_rejects_unexpected_launch_kit_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = Path(tmp) / "launch-kit"
+            kit.mkdir()
+
+            result = hn_readiness.check_evidence_target(
+                str(kit / "debug-evidence.json"), str(kit)
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("hn-readiness-evidence.json", result.detail)
+
+    def test_evidence_target_allows_launch_kit_evidence_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = Path(tmp) / "launch-kit"
+            kit.mkdir()
+
+            result = hn_readiness.check_evidence_target(
+                str(kit / "hn-readiness-evidence.json"), str(kit)
+            )
+
+        self.assertTrue(result.ok)
+
+    def test_evidence_target_allows_output_outside_launch_kit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            kit = root / "launch-kit"
+            kit.mkdir()
+
+            result = hn_readiness.check_evidence_target(
+                str(root / "evidence.json"), str(kit)
+            )
+
+        self.assertTrue(result.ok)
 
     def test_evidence_report_write_failure_fails_closed(self) -> None:
         args = SimpleNamespace(
