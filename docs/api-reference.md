@@ -56,7 +56,7 @@ Remote URL verification is intentionally rejected:
 ### Limits
 
 - `fileText` maximum: 256 KiB.
-- Rate limit: defaults to 240 public verifier requests per 60 seconds per app instance.
+- Rate limit: defaults to 240 public verifier requests per 60 seconds per app instance, configurable with positive integer `GROUNDLOCK_RATE_LIMIT_MAX` and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS` values.
 - Live DoH/status fetch timeout: defaults to 5000 ms per external request, configurable with `GROUNDLOCK_FETCH_TIMEOUT_MS` from 1 through 30000.
 - JSON responses use `Cache-Control: no-store`.
 - Remote URL fetching is not supported by the public endpoint.
@@ -66,7 +66,7 @@ Remote URL verification is intentionally rejected:
 - Valid JSON that is not an object returns HTTP `400` with `code: "invalid_input"`.
 - Unknown, malformed, missing, or oversized input fails closed.
 
-The verifier uses one in-memory public bucket by default because spoofable forwarding headers are not trusted as client identity. Tune `GROUNDLOCK_RATE_LIMIT_MAX` and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS` at the deployment edge for launch traffic. A limited response returns HTTP `429` with `Retry-After`.
+The verifier uses one in-memory public bucket by default because spoofable forwarding headers are not trusted as client identity. Tune `GROUNDLOCK_RATE_LIMIT_MAX` and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS` at the deployment edge for launch traffic. Invalid configured rate-limit values make live health return `503` with `invalid_rate_limit` and make `/api/verify` return `503` with `code: "rate_limit_invalid"`. A limited response returns HTTP `429` with `Retry-After`.
 
 ### Response shape
 

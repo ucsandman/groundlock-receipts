@@ -3,6 +3,11 @@ import { POST } from "../app/api/verify/route";
 import { RATE_LIMIT_MAX, demoInputs, MAX_VERIFY_BYTES } from "../lib/public-verifier";
 import { resetPublicVerifierRateLimitForTest } from "../lib/rate-limit";
 
+const originalEnv = {
+  GROUNDLOCK_RATE_LIMIT_MAX: process.env.GROUNDLOCK_RATE_LIMIT_MAX,
+  GROUNDLOCK_RATE_LIMIT_WINDOW_MS: process.env.GROUNDLOCK_RATE_LIMIT_WINDOW_MS,
+};
+
 async function postJson(body: unknown, headers: Record<string, string> = {}) {
   const response = await POST(
     new Request("http://localhost/api/verify", {
@@ -32,6 +37,8 @@ describe("public verifier route", () => {
 
   afterEach(() => {
     resetPublicVerifierRateLimitForTest();
+    restoreEnv("GROUNDLOCK_RATE_LIMIT_MAX", originalEnv.GROUNDLOCK_RATE_LIMIT_MAX);
+    restoreEnv("GROUNDLOCK_RATE_LIMIT_WINDOW_MS", originalEnv.GROUNDLOCK_RATE_LIMIT_WINDOW_MS);
   });
 
   it("returns PASS, BLOCK, REVOKED, and UNVERIFIABLE public states", async () => {
@@ -134,4 +141,19 @@ describe("public verifier route", () => {
     expect(Number(last?.response.headers.get("retry-after"))).toBeGreaterThan(0);
     expect(last?.json).toEqual(expect.objectContaining({ state: "UNVERIFIABLE", code: "rate_limited" }));
   });
+
+  it("fails closed when rate limit config is invalid", async () => {
+    process.env.GROUNDLOCK_RATE_LIMIT_MAX = "0";
+
+    const result = await postJson({ hash: "sha256:unknownhashvalue" });
+
+    expect(result.response.status).toBe(503);
+    expect(result.response.headers.get("cache-control")).toBe("no-store");
+    expect(result.json).toEqual(expect.objectContaining({ state: "UNVERIFIABLE", code: "rate_limit_invalid" }));
+  });
 });
+
+function restoreEnv(name: keyof typeof originalEnv, value: string | undefined) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}

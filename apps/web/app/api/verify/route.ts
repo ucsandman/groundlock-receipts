@@ -130,6 +130,9 @@ function publicErrorWithHeaders(code: string, status: number, headers?: HeadersI
 
 function rateLimit(_req: Request) {
   const decision = checkPublicVerifierRateLimit();
+  if (decision.invalidConfig) {
+    return publicErrorWithHeaders("rate_limit_invalid", 503);
+  }
   if (decision.limited) {
     return publicErrorWithHeaders("rate_limited", 429, {
       "Retry-After": String(decision.retryAfterSeconds ?? 1),

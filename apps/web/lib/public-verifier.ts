@@ -21,10 +21,9 @@ import {
 import { cleanCandidate, exampleSource, fabricatingCandidate } from "./examples";
 import { MAX_FETCH_TIMEOUT_MS, configuredFetchTimeoutMs } from "./fetch-timeout";
 import { configuredLaunchHttpsUrl } from "./launch-url";
+export { RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS } from "./rate-limit";
 
 export const MAX_VERIFY_BYTES = 256 * 1024;
-export const RATE_LIMIT_MAX = readPositiveIntEnv("GROUNDLOCK_RATE_LIMIT_MAX", 240);
-export const RATE_LIMIT_WINDOW_MS = readPositiveIntEnv("GROUNDLOCK_RATE_LIMIT_WINDOW_MS", 60_000);
 export const WHAT_IT_PROVES =
   "The verifier reconstructs a signed GroundLock receipt from DNS resolver-cache TXT chunks, then verifies the content hash, receipt hash, signature, grounding verdict, and revocation status.";
 export const WHAT_IT_DOES_NOT_PROVE =
@@ -268,14 +267,6 @@ function cleanEnv(value: string | undefined): string | null {
 
 function configuredHttpsUrl(value: string | null): string | null {
   return configuredLaunchHttpsUrl(value);
-}
-
-function readPositiveIntEnv(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
-  return parsed;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

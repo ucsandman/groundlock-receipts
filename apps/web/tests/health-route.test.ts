@@ -7,6 +7,8 @@ const originalEnv = {
   GROUNDLOCK_STATUS_BASE_URL: process.env.GROUNDLOCK_STATUS_BASE_URL,
   GROUNDLOCK_STATUS_RECORDS_JSON: process.env.GROUNDLOCK_STATUS_RECORDS_JSON,
   GROUNDLOCK_FETCH_TIMEOUT_MS: process.env.GROUNDLOCK_FETCH_TIMEOUT_MS,
+  GROUNDLOCK_RATE_LIMIT_MAX: process.env.GROUNDLOCK_RATE_LIMIT_MAX,
+  GROUNDLOCK_RATE_LIMIT_WINDOW_MS: process.env.GROUNDLOCK_RATE_LIMIT_WINDOW_MS,
 };
 
 afterEach(() => {
@@ -16,6 +18,8 @@ afterEach(() => {
   restoreEnv("GROUNDLOCK_STATUS_BASE_URL", originalEnv.GROUNDLOCK_STATUS_BASE_URL);
   restoreEnv("GROUNDLOCK_STATUS_RECORDS_JSON", originalEnv.GROUNDLOCK_STATUS_RECORDS_JSON);
   restoreEnv("GROUNDLOCK_FETCH_TIMEOUT_MS", originalEnv.GROUNDLOCK_FETCH_TIMEOUT_MS);
+  restoreEnv("GROUNDLOCK_RATE_LIMIT_MAX", originalEnv.GROUNDLOCK_RATE_LIMIT_MAX);
+  restoreEnv("GROUNDLOCK_RATE_LIMIT_WINDOW_MS", originalEnv.GROUNDLOCK_RATE_LIMIT_WINDOW_MS);
 });
 
 describe("health route", () => {
@@ -141,6 +145,31 @@ describe("health route", () => {
       code: "invalid_fetch_timeout",
     }));
     expect(JSON.stringify(body)).not.toContain("resolver.example");
+  });
+
+  it.each([
+    ["max", "GROUNDLOCK_RATE_LIMIT_MAX", "0"],
+    ["window", "GROUNDLOCK_RATE_LIMIT_WINDOW_MS", "not-a-number"],
+  ])("fails live mode health when rate limit %s config is invalid", async (_label, key, value) => {
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://receipts.groundlock.dev";
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.example/groundlock/status";
+    process.env[key] = value;
+
+    const route = await import("../app/api/health/route");
+    const response = await route.GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(body).toEqual(expect.objectContaining({
+      service: "groundlock-web",
+      ok: false,
+      mode: "live",
+      code: "invalid_rate_limit",
+    }));
+    expect(JSON.stringify(body)).not.toContain(value);
   });
 
   it("fails live mode health when bundled same-origin status records are missing", async () => {

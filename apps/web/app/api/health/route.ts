@@ -1,6 +1,7 @@
 import { jsonNoStore } from "../../../lib/http";
 import { configuredFetchTimeoutMs } from "../../../lib/fetch-timeout";
 import { configuredLaunchHttpsUrl } from "../../../lib/launch-url";
+import { configuredRateLimit } from "../../../lib/rate-limit";
 import { readStatusRecords } from "../../../lib/status-endpoint";
 import type { StatusRecord } from "@groundlock/core";
 
@@ -60,6 +61,10 @@ export function GET() {
 
   if (mode === "live" && configuredFetchTimeoutMs() === null) {
     return liveConfigError("invalid_fetch_timeout", checks);
+  }
+
+  if (mode === "live" && configuredRateLimit() === null) {
+    return liveConfigError("invalid_rate_limit", checks);
   }
 
   if (mode === "live" && usesBundledStatusEndpoint() && !checks.statusRecordsConfigured) {
