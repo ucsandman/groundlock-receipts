@@ -622,6 +622,27 @@ function validatePublicLaunchFixtureStatuses(fixture: DnsFixture): void {
   if (!/^sha256:[A-Za-z0-9_-]+$/.test(claim.subject.receiptHash)) {
     throw new Error("launch_fixture_status_mismatch");
   }
+  const manifest = singlePublicLaunchManifest(fixture);
+  validateFixtureStatuses(fixture, manifest);
+}
+
+function singlePublicLaunchManifest(fixture: DnsFixture): CacheManifestRecord {
+  const manifests: CacheManifestRecord[] = [];
+  for (const values of Object.values(fixture.txt)) {
+    if (!Array.isArray(values)) throw new Error("invalid_fixture");
+    for (const value of values) {
+      if (typeof value !== "string") throw new Error("invalid_fixture");
+      if (!value.trim().startsWith("gdm1 ")) continue;
+      try {
+        manifests.push(parseCacheManifestRecord(value));
+      } catch {
+        throw new Error("launch_fixture_manifest_malformed");
+      }
+    }
+  }
+  if (manifests.length === 0) throw new Error("launch_fixture_manifest_missing");
+  if (manifests.length > 1) throw new Error("launch_fixture_manifest_ambiguous");
+  return manifests[0]!;
 }
 
 function isKeyStatusRecordShape(value: unknown): value is KeyStatusRecord {
