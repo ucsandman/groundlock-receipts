@@ -186,12 +186,12 @@ def production_security_headers(
 class FakeHttpResponse:
     def __init__(
         self,
-        body: str,
+        body: str | bytes,
         *,
         status: int = 200,
         headers: dict[str, str] | None = None,
     ) -> None:
-        self.body = body.encode("utf-8")
+        self.body = body if isinstance(body, bytes) else body.encode("utf-8")
         self.status = status
         self.headers = headers or {}
 
@@ -795,6 +795,12 @@ class HnReadinessTests(unittest.TestCase):
         self.assertEqual(
             hn_readiness.verify_endpoint("https://receipts.groundlock.dev/api/health"),
             "https://receipts.groundlock.dev/api/verify",
+        )
+
+    def test_share_image_url_strips_health_endpoint(self) -> None:
+        self.assertEqual(
+            hn_readiness.share_image_url("https://receipts.groundlock.dev/api/health"),
+            "https://receipts.groundlock.dev/groundlock-receipt-desk.png",
         )
 
     def test_discovery_endpoints_strip_health_endpoint(self) -> None:
@@ -1691,6 +1697,72 @@ class HnReadinessTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn("GroundLock Receipts", result.detail)
+
+    def test_share_image_check_accepts_secure_png(self) -> None:
+        seen_urls: list[str] = []
+
+        def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
+            self.assertEqual(timeout, 10.0)
+            seen_urls.append(str(getattr(request, "full_url")))
+            return FakeHttpResponse(
+                b"\x89PNG\r\n\x1a\nsample",
+                headers={
+                    **production_security_headers(),
+                    "Content-Type": "image/png",
+                },
+            )
+
+        with mock.patch.object(
+            hn_readiness.urllib.request, "urlopen", side_effect=fake_urlopen
+        ):
+            result = hn_readiness.check_share_image(
+                "https://receipts.groundlock.dev/api/health"
+            )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            seen_urls,
+            ["https://receipts.groundlock.dev/groundlock-receipt-desk.png"],
+        )
+
+    def test_share_image_check_requires_security_headers(self) -> None:
+        with mock.patch.object(
+            hn_readiness.urllib.request,
+            "urlopen",
+            return_value=FakeHttpResponse(
+                b"\x89PNG\r\n\x1a\nsample", headers={"Content-Type": "image/png"}
+            ),
+        ):
+            result = hn_readiness.check_share_image("https://receipts.groundlock.dev/")
+
+        self.assertFalse(result.ok)
+        self.assertIn("share-image missing Content-Security-Policy", result.detail)
+
+    def test_share_image_check_requires_png_content_type_and_body(self) -> None:
+        cases = [
+            (
+                {"Content-Type": "text/plain"},
+                b"\x89PNG\r\n\x1a\nsample",
+                "Content-Type",
+            ),
+            ({"Content-Type": "image/png"}, b"not-a-png", "PNG body"),
+        ]
+        for headers, body, expected_detail in cases:
+            with self.subTest(expected_detail=expected_detail):
+                with mock.patch.object(
+                    hn_readiness.urllib.request,
+                    "urlopen",
+                    return_value=FakeHttpResponse(
+                        body,
+                        headers={**production_security_headers(), **headers},
+                    ),
+                ):
+                    result = hn_readiness.check_share_image(
+                        "https://receipts.groundlock.dev/"
+                    )
+
+                self.assertFalse(result.ok)
+                self.assertIn(expected_detail, result.detail)
 
     def test_public_discovery_files_accept_launch_origin(self) -> None:
         robots = """
@@ -2666,6 +2738,9 @@ class HnReadinessTests(unittest.TestCase):
             mock.patch.object(hn_readiness, "check_health_url", return_value=ok),
             mock.patch.object(hn_readiness, "check_homepage_metadata", return_value=ok),
             mock.patch.object(
+                hn_readiness, "check_share_image", return_value=ok
+            ) as check_share_image,
+            mock.patch.object(
                 hn_readiness, "check_public_discovery_files", return_value=ok
             ) as check_public_discovery_files,
             mock.patch.object(
@@ -2684,6 +2759,7 @@ class HnReadinessTests(unittest.TestCase):
 
         self.assertIn("web-verify", [result.name for result in results])
         self.assertEqual(results[-1].name, "web-verify")
+        check_share_image.assert_called_once_with("https://receipts.groundlock.dev")
         check_public_discovery_files.assert_called_once_with(
             "https://receipts.groundlock.dev"
         )
@@ -2737,6 +2813,7 @@ class HnReadinessTests(unittest.TestCase):
                 "healthUrl": "https://receipts.groundlock.dev/api/health",
                 "homepageUrl": "https://receipts.groundlock.dev/",
                 "verifyEndpoint": "https://receipts.groundlock.dev/api/verify",
+                "shareImageUrl": "https://receipts.groundlock.dev/groundlock-receipt-desk.png",
                 "robotsEndpoint": "https://receipts.groundlock.dev/robots.txt",
                 "sitemapEndpoint": "https://receipts.groundlock.dev/sitemap.xml",
                 "dnsFixture": str(fixture),

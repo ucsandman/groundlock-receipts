@@ -249,6 +249,10 @@ def verify_endpoint(url: str) -> str:
     return f"{homepage_url(url).rstrip('/')}/api/verify"
 
 
+def share_image_url(url: str) -> str:
+    return f"{homepage_url(url).rstrip('/')}{OG_IMAGE_PATH}"
+
+
 def robots_endpoint(url: str) -> str:
     return f"{homepage_url(url).rstrip('/')}/robots.txt"
 
@@ -444,6 +448,42 @@ def check_homepage_metadata(url: str, timeout: float = 10.0) -> CheckResult:
         return CheckResult("metadata", False, f"{endpoint} failed: {exc}")
 
     return validate_homepage_metadata(body, endpoint)
+
+
+def check_share_image(url: str, timeout: float = 10.0) -> CheckResult:
+    endpoint = share_image_url(url)
+    request = urllib.request.Request(
+        endpoint, headers={"User-Agent": "groundlock-hn-readiness/1"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read(16)
+            if response.status != 200:
+                return CheckResult(
+                    "share-image", False, f"{endpoint} returned HTTP {response.status}"
+                )
+            header_failures = validate_response_headers(response.headers, "share-image")
+            if header_failures:
+                return CheckResult("share-image", False, "; ".join(header_failures))
+            content_type = header_value(response.headers, "Content-Type") or ""
+            if not content_type.lower().startswith("image/png"):
+                return CheckResult(
+                    "share-image",
+                    False,
+                    f"{endpoint} Content-Type is {content_type!r}, expected image/png",
+                )
+            if not body.startswith(b"\x89PNG\r\n\x1a\n"):
+                return CheckResult(
+                    "share-image", False, f"{endpoint} did not return a PNG body"
+                )
+    except Exception as exc:
+        return CheckResult("share-image", False, f"{endpoint} failed: {exc}")
+
+    return CheckResult(
+        "share-image",
+        True,
+        "deployed share image is reachable, hardened, and serves PNG bytes",
+    )
 
 
 def validate_public_discovery_files(
@@ -2313,6 +2353,7 @@ def evidence_inputs(args: argparse.Namespace) -> dict[str, object]:
         "healthUrl": args.health_url,
         "homepageUrl": homepage_url(args.health_url),
         "verifyEndpoint": verify_endpoint(args.health_url),
+        "shareImageUrl": share_image_url(args.health_url),
         "robotsEndpoint": robots_endpoint(args.health_url),
         "sitemapEndpoint": sitemap_endpoint(args.health_url),
         "dnsFixture": args.dns_fixture,
@@ -2432,6 +2473,7 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
         check_ci(args.repo, args.branch),
         check_health_url(args.health_url, args.status_base_url),
         check_homepage_metadata(args.health_url),
+        check_share_image(args.health_url),
         check_public_discovery_files(args.health_url),
         check_security_headers(args.health_url),
         check_status_endpoints(args.status_base_url, fixture_status_records),

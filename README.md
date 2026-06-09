@@ -157,7 +157,7 @@ Never commit `.env`, `.env.local`, or real private keys.
 
 See [docs/show-hn-draft.md](docs/show-hn-draft.md). The current draft is marked `LOCAL_DEMO_ONLY` until stable resolver-cache warming, an explicit deployed DoH endpoint, and status endpoints are configured.
 
-After the public deployment is live, run the fail-closed launch audit before removing that marker. It checks CI, public HTTPS launch targets, launch-kit checksums and secret scans, live verifier health, homepage canonical/share metadata, `robots.txt`/`sitemap.xml` public discovery files, public key/claim status endpoints with `Cache-Control: no-store`, resolver-cache warming, live receipt verification, and the deployed `/api/verify` endpoint:
+After the public deployment is live, run the fail-closed launch audit before removing that marker. It checks CI, public HTTPS launch targets, launch-kit checksums and secret scans, live verifier health, homepage canonical/share metadata, deployed share image PNG, `robots.txt`/`sitemap.xml` public discovery files, public key/claim status endpoints with `Cache-Control: no-store`, resolver-cache warming, live receipt verification, and the deployed `/api/verify` endpoint:
 
 ```powershell
 python .\scripts\hn_readiness.py --health-url https://receipts.groundlock.dev --dns-fixture .\published\launch-kit\dns-fixture.json --launch-kit .\published\launch-kit --file-or-hash sha256:<hash> --domain publisher.groundlock.dev --status-base-url https://receipts.groundlock.dev/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --evidence-out .\published\launch-kit\hn-readiness-evidence.json
