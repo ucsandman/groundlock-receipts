@@ -23,6 +23,8 @@ GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000
 
 Demo mode does not use live DoH. When `GROUNDLOCK_SIGNER_DOMAIN` is set, `GROUNDLOCK_DOH_ENDPOINT` is required and must be a valid HTTPS URL so the verifier does not silently fall back to an unintended resolver. `groundlock export-web-env`, `groundlock warm-cache`, and `groundlock check-live` reject malformed, non-HTTPS, credentialed, query-suffixed, fragment-suffixed, or IP-based launch URLs before making resolver or status requests. The Hacker News readiness audit requires the deployed verifier to report `dohEndpointConfigured` and requires `warm-cache`, `check-live`, and `hn_readiness.py` to use the same DoH endpoint URL. The DoH response must include the DNSSEC AD signal; otherwise the verifier fails closed with `dnssec_not_validated`.
 
+The verifier initializes demo signing material only for demo-mode fixture verification. When `GROUNDLOCK_SIGNER_DOMAIN` enables live verifier mode, `/api/verify` uses the configured DNS/status paths without generating demo signing keys or issuing new receipts.
+
 `NEXT_PUBLIC_SITE_URL` should be the public HTTPS origin for the deployed verifier. It is used for canonical metadata, Open Graph images, `robots.txt`, and `sitemap.xml`. Set it before building static metadata; `robots.txt` and `sitemap.xml` also read it at runtime. If set in live mode, `/api/health` requires it to be a valid HTTPS URL.
 
 `GROUNDLOCK_STATUS_BASE_URL` is required when `GROUNDLOCK_SIGNER_DOMAIN` is set.

@@ -38,19 +38,19 @@ interface DemoFixture {
   resolver: TrueNameResolver;
 }
 
-const signerDomain = "publisher.example";
-const demoKey = generateSigningKey("demo-key-1");
+const DEMO_SIGNER_DOMAIN = "publisher.example";
 const revokedText = "Dear Jane Roe, your account AC-40192 shows a balance of $1,500.00. Revoked demo copy.";
-const demoFixture = createDemoFixture();
+let cachedDemoFixture: DemoFixture | null = null;
 
 export function demoInputs() {
+  const fixture = demoFixture();
   return {
-    passText: demoFixture.passText,
-    blockText: demoFixture.blockText,
-    revokedText: demoFixture.revokedText,
-    passHash: digestText(demoFixture.passText),
-    blockHash: digestText(demoFixture.blockText),
-    revokedHash: digestText(demoFixture.revokedText),
+    passText: fixture.passText,
+    blockText: fixture.blockText,
+    revokedText: fixture.revokedText,
+    passHash: digestText(fixture.passText),
+    blockHash: digestText(fixture.blockText),
+    revokedHash: digestText(fixture.revokedText),
   };
 }
 
@@ -101,7 +101,8 @@ export async function verifyPublicContentHash(contentHash: string): Promise<True
       statusResolver: createHttpStatusResolver(fetcher, statusBaseUrl),
     });
   }
-  return verifyTrueName(contentHash, demoFixture.domain, demoFixture.resolver);
+  const fixture = demoFixture();
+  return verifyTrueName(contentHash, fixture.domain, fixture.resolver);
 }
 
 export function summarizeReceipt(receipt: ProofReceipt | undefined) {
@@ -117,15 +118,21 @@ export function summarizeReceipt(receipt: ProofReceipt | undefined) {
   };
 }
 
+function demoFixture(): DemoFixture {
+  cachedDemoFixture ??= createDemoFixture();
+  return cachedDemoFixture;
+}
+
 function createDemoFixture(): DemoFixture {
-  const passReceipt = makeReceipt(cleanCandidate);
-  const blockReceipt = makeReceipt(fabricatingCandidate);
-  const revokedReceipt = makeReceipt(revokedText);
+  const demoKey = generateSigningKey("demo-key-1");
+  const passReceipt = makeReceipt(cleanCandidate, demoKey);
+  const blockReceipt = makeReceipt(fabricatingCandidate, demoKey);
+  const revokedReceipt = makeReceipt(revokedText, demoKey);
   const receipts = [passReceipt, blockReceipt, revokedReceipt];
   const txt: Record<string, string[]> = {};
   const claimStatus = new Map<string, ReturnType<typeof createClaimStatusRecord>>();
   const keyStatus = createKeyStatusRecord({
-    signerDomain,
+    signerDomain: DEMO_SIGNER_DOMAIN,
     kid: demoKey.kid,
     status: "active",
     issuedAt: passReceipt.issuedAt,
@@ -155,7 +162,7 @@ function createDemoFixture(): DemoFixture {
   };
 
   return {
-    domain: signerDomain,
+    domain: DEMO_SIGNER_DOMAIN,
     passText: cleanCandidate,
     blockText: fabricatingCandidate,
     revokedText,
@@ -171,14 +178,14 @@ function createDemoFixture(): DemoFixture {
   };
 }
 
-function makeReceipt(text: string): ProofReceipt {
+function makeReceipt(text: string, key: ReturnType<typeof generateSigningKey>): ProofReceipt {
   return issueVerifiedReceipt(
     text,
     exampleSource as SourceOfTruth,
-    { kid: demoKey.kid, privateKeyJwk: demoKey.privateKeyJwk },
+    { kid: key.kid, privateKeyJwk: key.privateKeyJwk },
     new Date().toISOString(),
     {
-      signerDomain,
+      signerDomain: DEMO_SIGNER_DOMAIN,
       contentClass: "demo-message",
     },
   );

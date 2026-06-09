@@ -26,11 +26,35 @@ afterEach(() => {
   restoreEnv("GROUNDLOCK_DOH_ENDPOINT", originalEnv.GROUNDLOCK_DOH_ENDPOINT);
   restoreEnv("GROUNDLOCK_STATUS_BASE_URL", originalEnv.GROUNDLOCK_STATUS_BASE_URL);
   restoreEnv("GROUNDLOCK_FETCH_TIMEOUT_MS", originalEnv.GROUNDLOCK_FETCH_TIMEOUT_MS);
+  vi.doUnmock("@groundlock/core");
   vi.unstubAllGlobals();
   vi.resetModules();
 });
 
 describe("live public verifier", () => {
+  it("does not initialize demo signing material when live mode is configured", async () => {
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.example";
+    delete process.env.GROUNDLOCK_DOH_ENDPOINT;
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://status.example/groundlock";
+    const actualCore = await vi.importActual<typeof import("@groundlock/core")>("@groundlock/core");
+    const generateSigningKeySpy = vi.fn(() => {
+      throw new Error("demo signing key should not be generated in live mode");
+    });
+    vi.doMock("@groundlock/core", () => ({
+      ...actualCore,
+      generateSigningKey: generateSigningKeySpy,
+    }));
+
+    const { verifyPublicContentHash } = await import("../lib/public-verifier");
+    const result = await verifyPublicContentHash(digestText(liveCandidate));
+
+    expect(result).toEqual(expect.objectContaining({
+      state: "UNVERIFIABLE",
+      code: "doh_resolver_not_configured",
+    }));
+    expect(generateSigningKeySpy).not.toHaveBeenCalled();
+  });
+
   it("fails closed when live mode lacks an explicit DoH endpoint", async () => {
     process.env.GROUNDLOCK_SIGNER_DOMAIN = "live.example";
     delete process.env.GROUNDLOCK_DOH_ENDPOINT;
