@@ -77,7 +77,8 @@ jobs:
             docker logs groundlock-web-ci || true
             exit 1
           fi
-          node scripts/smoke_web_response.mjs http://127.0.0.1:3014
+          node scripts/smoke_web_response.mjs http://127.0.0.1:3014 \
+            --verify-file-text 'Dear Jane Roe, your account AC-40192 shows a balance of $1,500.00, due by June 1, 2026. Thank you.'
 
       - name: Smoke Docker live mode
         shell: bash

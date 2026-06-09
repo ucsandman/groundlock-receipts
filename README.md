@@ -118,6 +118,8 @@ docker build -t groundlock-web .
 docker run --rm -p 3000:3000 groundlock-web
 ```
 
+CI smoke-tests the built image by checking `/`, `/api/health`, and a demo PASS `POST /api/verify` response with the same production security-header contract used by the app.
+
 ## Threat model
 
 See [docs/threat-model.md](docs/threat-model.md) for canonicalized-hash limits, DNS cache availability limits, attacker capabilities, fail-closed states, key rotation, revocation, C2PA interop boundaries, and private workflow leakage.

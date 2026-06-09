@@ -47,6 +47,9 @@ function usage() {
       "  --expected-origin <https-origin>",
       "  --status-key-lookup <lookup>",
       "  --status-claim-lookup <lookup>",
+      "  --verify-file-text <text>",
+      "  --verify-hash <sha256:...>",
+      "  --expect-verify-state <PASS|BLOCK|REVOKED|UNVERIFIABLE>",
     ].join("\n"),
   );
 }
@@ -85,6 +88,9 @@ function parseArgs(argv) {
     expectedOrigin: null,
     statusKeyLookup: null,
     statusClaimLookup: null,
+    verifyFileText: null,
+    verifyHash: null,
+    expectVerifyState: null,
   };
   for (let i = 0; i < rest.length; i++) {
     const token = rest[i];
@@ -99,9 +105,31 @@ function parseArgs(argv) {
     } else if (token === "--status-claim-lookup") {
       options.statusClaimLookup = rest[++i];
       if (!options.statusClaimLookup) throw new Error("--status-claim-lookup requires a value");
+    } else if (token === "--verify-file-text") {
+      options.verifyFileText = rest[++i];
+      if (!options.verifyFileText) throw new Error("--verify-file-text requires a value");
+    } else if (token === "--verify-hash") {
+      options.verifyHash = rest[++i];
+      if (!/^sha256:[A-Za-z0-9_-]{8,}$/.test(options.verifyHash)) {
+        throw new Error("--verify-hash requires a sha256: hash");
+      }
+    } else if (token === "--expect-verify-state") {
+      options.expectVerifyState = rest[++i];
+      if (!["PASS", "BLOCK", "REVOKED", "UNVERIFIABLE"].includes(options.expectVerifyState)) {
+        throw new Error("--expect-verify-state must be PASS, BLOCK, REVOKED, or UNVERIFIABLE");
+      }
     } else {
       throw new Error(`unknown option ${token}`);
     }
+  }
+  if (options.verifyFileText && options.verifyHash) {
+    throw new Error("use either --verify-file-text or --verify-hash, not both");
+  }
+  if (options.expectVerifyState && !options.verifyFileText && !options.verifyHash) {
+    throw new Error("--expect-verify-state requires --verify-file-text or --verify-hash");
+  }
+  if ((options.verifyFileText || options.verifyHash) && !options.expectVerifyState) {
+    options.expectVerifyState = "PASS";
   }
   return options;
 }
@@ -140,6 +168,17 @@ function validateSecurityHeaders(response, path) {
 
 async function fetchText(url) {
   const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  const text = await response.text();
+  return { response, text };
+}
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
+  });
   const text = await response.text();
   return { response, text };
 }
@@ -202,6 +241,38 @@ async function validateStatusEndpoint(baseUrl, kind, lookup) {
   }
 }
 
+async function validateVerifyEndpoint(baseUrl, opts) {
+  if (!opts.verifyFileText && !opts.verifyHash) return;
+  const url = endpoint(baseUrl, "/api/verify");
+  const payload = opts.verifyFileText ? { fileText: opts.verifyFileText } : { hash: opts.verifyHash };
+  const { response, text } = await postJson(url, payload);
+  validateSecurityHeaders(response, url.pathname);
+  if ((response.headers.get("cache-control") ?? "") !== "no-store") {
+    throw new Error(`${url.pathname} missing Cache-Control: no-store`);
+  }
+  if (!response.ok) throw new Error(`${url.pathname} returned HTTP ${response.status}`);
+
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error(`${url.pathname} returned invalid JSON`);
+  }
+
+  if (body?.state !== opts.expectVerifyState) {
+    throw new Error(`${url.pathname} returned state ${body?.state}, expected ${opts.expectVerifyState}`);
+  }
+  if (opts.expectVerifyState === "PASS") {
+    if (body.code !== "verified") throw new Error(`${url.pathname} PASS response code was ${body.code}`);
+    if (body.receiptSummary?.verdict !== "pass") {
+      throw new Error(`${url.pathname} PASS response did not include a pass receipt summary`);
+    }
+    if (opts.verifyHash && body.receiptSummary?.contentHash !== opts.verifyHash) {
+      throw new Error(`${url.pathname} receiptSummary contentHash did not match verify hash`);
+    }
+  }
+}
+
 async function smoke(opts) {
   const baseUrl = opts.baseUrl;
   const paths = ["/", "/api/health"];
@@ -226,6 +297,7 @@ async function smoke(opts) {
   }
   await validateStatusEndpoint(baseUrl, "key", opts.statusKeyLookup);
   await validateStatusEndpoint(baseUrl, "claim", opts.statusClaimLookup);
+  await validateVerifyEndpoint(baseUrl, opts);
 }
 
 let opts;
