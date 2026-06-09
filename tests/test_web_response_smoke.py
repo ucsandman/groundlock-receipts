@@ -14,6 +14,7 @@ CONTRACT = json.loads(
         encoding="utf-8"
     )
 )
+PNG_BYTES = b"\x89PNG\r\n\x1a\nsmoke-test-png"
 
 
 def security_headers() -> dict[str, str]:
@@ -23,14 +24,15 @@ def security_headers() -> dict[str, str]:
     }
 
 
-def homepage_html(origin: str) -> str:
+def homepage_html(origin: str, *, share_image_url: str | None = None) -> str:
+    image_url = share_image_url or f"{origin}/groundlock-receipt-desk.png"
     return f"""
     <html>
       <head>
         <link rel="canonical" href="{origin}/">
         <meta property="og:url" content="{origin}/">
-        <meta property="og:image" content="{origin}/groundlock-receipt-desk.png">
-        <meta name="twitter:image" content="{origin}/groundlock-receipt-desk.png">
+        <meta property="og:image" content="{image_url}">
+        <meta name="twitter:image" content="{image_url}">
       </head>
       <body>GroundLock Receipts</body>
     </html>
@@ -111,6 +113,10 @@ class SmokeFixture:
         status_records_configured: bool = True,
         verify_state: str = "PASS",
         verify_no_store: bool = True,
+        share_image_metadata_url: str | None = None,
+        share_image_content_type: str = "image/png",
+        share_image_body: bytes = PNG_BYTES,
+        share_image_security_headers: bool = True,
     ) -> None:
         self.homepage_origin = homepage_origin
         self.discovery_origin = discovery_origin or homepage_origin
@@ -119,6 +125,10 @@ class SmokeFixture:
         self.status_records_configured = status_records_configured
         self.verify_state = verify_state
         self.verify_no_store = verify_no_store
+        self.share_image_metadata_url = share_image_metadata_url
+        self.share_image_content_type = share_image_content_type
+        self.share_image_body = share_image_body
+        self.share_image_security_headers = share_image_security_headers
         self.verify_requests: list[object] = []
 
 
@@ -128,7 +138,19 @@ class SmokeHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: vulture
         parsed = urlparse(self.path)
         if parsed.path == "/":
-            self.send_text(homepage_html(self.server.fixture.homepage_origin))
+            self.send_text(
+                homepage_html(
+                    self.server.fixture.homepage_origin,
+                    share_image_url=self.server.fixture.share_image_metadata_url,
+                )
+            )
+            return
+        if parsed.path == "/groundlock-receipt-desk.png":
+            self.send_binary(
+                self.server.fixture.share_image_body,
+                content_type=self.server.fixture.share_image_content_type,
+                include_security_headers=self.server.fixture.share_image_security_headers,
+            )
             return
         if parsed.path == "/robots.txt":
             self.send_text(robots_text(self.server.fixture.discovery_origin))
@@ -221,6 +243,17 @@ class SmokeHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body.encode("utf-8"))
 
+    def send_binary(
+        self, body: bytes, *, content_type: str, include_security_headers: bool
+    ) -> None:
+        self.send_response(200)
+        if include_security_headers:
+            for name, value in security_headers().items():
+                self.send_header(name, value)
+        self.send_header("Content-Type", content_type)
+        self.end_headers()
+        self.wfile.write(body)
+
     def send_json(self, body: object, *, no_store: bool) -> None:
         self.send_response(200)
         for name, value in security_headers().items():
@@ -289,6 +322,35 @@ class WebResponseSmokeTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("canonical", result.stderr)
         self.assertIn("localhost", result.stderr)
+
+    def test_smoke_rejects_wrong_share_image_metadata_path(self) -> None:
+        result = self.run_smoke(
+            SmokeFixture(
+                share_image_metadata_url="https://receipts.groundlock.dev/other.png"
+            )
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("og:image", result.stderr)
+        self.assertIn("groundlock-receipt-desk.png", result.stderr)
+
+    def test_smoke_rejects_share_image_without_security_headers(self) -> None:
+        result = self.run_smoke(SmokeFixture(share_image_security_headers=False))
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("/groundlock-receipt-desk.png missing", result.stderr)
+
+    def test_smoke_rejects_share_image_with_wrong_content_type(self) -> None:
+        result = self.run_smoke(SmokeFixture(share_image_content_type="text/plain"))
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Content-Type is text/plain", result.stderr)
+
+    def test_smoke_rejects_share_image_without_png_bytes(self) -> None:
+        result = self.run_smoke(SmokeFixture(share_image_body=b"not a png"))
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("did not return PNG bytes", result.stderr)
 
     def test_smoke_rejects_stale_public_discovery_files(self) -> None:
         result = self.run_smoke(

@@ -21,6 +21,8 @@ if (
 
 const REQUIRED_HEADER_VALUES = contract.requiredHeaderValues;
 const FORBIDDEN_CSP_VALUES = contract.forbiddenCspValues;
+const SHARE_IMAGE_PATH = "/groundlock-receipt-desk.png";
+const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 for (const [headerName, expectedValues] of Object.entries(REQUIRED_HEADER_VALUES)) {
   if (
@@ -172,6 +174,12 @@ async function fetchText(url) {
   return { response, text };
 }
 
+async function fetchBytes(url) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  return { response, bytes };
+}
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",
@@ -186,6 +194,7 @@ async function postJson(url, body) {
 function validateHomepageMetadata(html, expectedOrigin) {
   if (!expectedOrigin) return;
   const expectedRoot = `${expectedOrigin}/`;
+  const expectedShareImage = `${expectedOrigin}${SHARE_IMAGE_PATH}`;
   const checks = [
     ["canonical", /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i],
     ["og:url", /<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i],
@@ -197,10 +206,30 @@ function validateHomepageMetadata(html, expectedOrigin) {
     if (!match) throw new Error(`/ missing ${label} metadata`);
     const value = match[1] ?? "";
     if (label.endsWith("image")) {
-      if (!value.startsWith(expectedRoot)) throw new Error(`/ ${label} does not use ${expectedRoot}`);
+      if (value !== expectedShareImage) {
+        throw new Error(`/ ${label} is ${value}, expected ${expectedShareImage}`);
+      }
     } else if (value !== expectedRoot && value !== expectedOrigin) {
       throw new Error(`/ ${label} is ${value}, expected ${expectedRoot}`);
     }
+  }
+}
+
+async function validateShareImage(baseUrl, expectedOrigin) {
+  if (!expectedOrigin) return;
+  const { response, bytes } = await fetchBytes(endpoint(baseUrl, SHARE_IMAGE_PATH));
+  if (!response.ok) throw new Error(`${SHARE_IMAGE_PATH} returned HTTP ${response.status}`);
+  validateSecurityHeaders(response, SHARE_IMAGE_PATH);
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().startsWith("image/png")) {
+    throw new Error(`${SHARE_IMAGE_PATH} Content-Type is ${contentType}, expected image/png`);
+  }
+  if (
+    bytes.length < PNG_SIGNATURE.length ||
+    !PNG_SIGNATURE.every((byte, index) => bytes[index] === byte)
+  ) {
+    throw new Error(`${SHARE_IMAGE_PATH} did not return PNG bytes`);
   }
 }
 
@@ -366,6 +395,7 @@ async function smoke(opts) {
   }
   await validateStatusEndpoint(baseUrl, "key", opts.statusKeyLookup);
   await validateStatusEndpoint(baseUrl, "claim", opts.statusClaimLookup);
+  await validateShareImage(baseUrl, opts.expectedOrigin);
   await validateDiscoveryFiles(baseUrl, opts.expectedOrigin);
   await validateVerifyEndpoint(baseUrl, opts);
 }

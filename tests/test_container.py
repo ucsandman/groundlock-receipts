@@ -72,6 +72,8 @@ class ContainerConfigTests(unittest.TestCase):
         self.assertIn("/api/verify", smoke)
         self.assertIn("/robots.txt", smoke)
         self.assertIn("/sitemap.xml", smoke)
+        self.assertIn("/groundlock-receipt-desk.png", smoke)
+        self.assertIn("did not return PNG bytes", smoke)
         self.assertIn("Cache-Control: no-store", smoke)
         self.assertIn("--expect-live", smoke)
         self.assertIn("--verify-file-text", smoke)
