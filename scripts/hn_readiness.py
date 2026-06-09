@@ -58,6 +58,7 @@ LAUNCH_KIT_ARTIFACTS = {
     "runbook": "runbook.md",
     "checksums": "checksums.txt",
 }
+LAUNCH_KIT_ALLOWED_EXTRA_FILES = {"hn-readiness-evidence.json"}
 LAUNCH_KIT_CHECKSUMMED_ARTIFACTS = {
     key: LAUNCH_KIT_ARTIFACTS[key]
     for key in (
@@ -922,6 +923,7 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
 
 def scan_launch_kit_public_artifacts(root: Path) -> list[str]:
     failures = []
+    allowed_names = set(LAUNCH_KIT_ARTIFACTS.values()) | LAUNCH_KIT_ALLOWED_EXTRA_FILES
     try:
         entries = sorted(root.iterdir(), key=lambda path: path.name)
     except OSError as exc:
@@ -938,6 +940,8 @@ def scan_launch_kit_public_artifacts(root: Path) -> list[str]:
                 f"launch kit contains unexpected non-file entry: {artifact_name}"
             )
             continue
+        if artifact_name not in allowed_names:
+            failures.append(f"launch kit contains unexpected file: {artifact_name}")
         try:
             text = artifact_path.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
