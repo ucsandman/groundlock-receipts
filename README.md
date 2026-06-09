@@ -118,7 +118,7 @@ docker build -t groundlock-web .
 docker run --rm -p 3000:3000 groundlock-web
 ```
 
-CI smoke-tests the built image by checking `/`, `/api/health`, and a demo PASS `POST /api/verify` response with the same production security-header contract used by the app.
+CI smoke-tests the built image by checking `/`, `/groundlock-receipt-desk.png`, `/robots.txt`, `/sitemap.xml`, `/api/health`, same-origin key/claim status endpoints in live mode, and a demo PASS `POST /api/verify` response with the same production security-header contract used by the app.
 
 ## Threat model
 
