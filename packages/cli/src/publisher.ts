@@ -34,6 +34,8 @@ import {
 
 export const MAX_INPUT_BYTES = 1_000_000;
 export const DEFAULT_FETCH_TIMEOUT_MS = 5_000;
+export const DEFAULT_RATE_LIMIT_MAX = 240;
+export const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 const DNS_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 export interface SignFileOptions {
@@ -308,6 +310,8 @@ export async function exportWebEnv(opts: ExportWebEnvOptions): Promise<string> {
     `GROUNDLOCK_DOH_ENDPOINT=${dohEndpoint}`,
     `GROUNDLOCK_STATUS_BASE_URL=${statusBaseUrl}`,
     `GROUNDLOCK_FETCH_TIMEOUT_MS=${DEFAULT_FETCH_TIMEOUT_MS}`,
+    `GROUNDLOCK_RATE_LIMIT_MAX=${DEFAULT_RATE_LIMIT_MAX}`,
+    `GROUNDLOCK_RATE_LIMIT_WINDOW_MS=${DEFAULT_RATE_LIMIT_WINDOW_MS}`,
     `GROUNDLOCK_STATUS_RECORDS_JSON=${JSON.stringify(records)}`,
   ];
   return `${lines.join("\n")}\n`;
@@ -432,6 +436,8 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
         receiptIssuedAt: launch.receipt.issuedAt,
         contentClass: launch.receipt.contentClass,
         fetchTimeoutMs: DEFAULT_FETCH_TIMEOUT_MS,
+        rateLimitMax: DEFAULT_RATE_LIMIT_MAX,
+        rateLimitWindowMs: DEFAULT_RATE_LIMIT_WINDOW_MS,
         dnsTxtRecordCount: Object.keys(fixture.txt).length,
         statusRecordCount: 2,
         artifacts: Object.fromEntries(Object.entries(artifactPaths).map(([key, value]) => [key, path.basename(value)])),

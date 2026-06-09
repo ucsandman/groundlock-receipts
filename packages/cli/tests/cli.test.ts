@@ -307,6 +307,8 @@ describe("CLI entrypoint", () => {
     expect(runbook).toContain("GroundLock launch runbook");
     expect(checksums).toContain("dns-fixture.json");
     expect(checksums).toContain("runbook.md");
+    expect(webEnv).toContain("GROUNDLOCK_RATE_LIMIT_MAX=240");
+    expect(webEnv).toContain("GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000");
     expect(webEnv).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
   });
 

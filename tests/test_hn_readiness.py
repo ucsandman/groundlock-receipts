@@ -302,6 +302,8 @@ def write_launch_kit(
                 f"GROUNDLOCK_DOH_ENDPOINT={doh_endpoint}",
                 f"GROUNDLOCK_STATUS_BASE_URL={status_base_url}",
                 "GROUNDLOCK_FETCH_TIMEOUT_MS=5000",
+                "GROUNDLOCK_RATE_LIMIT_MAX=240",
+                "GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000",
                 f"GROUNDLOCK_STATUS_RECORDS_JSON={status_records_json}",
             ]
         )
@@ -342,6 +344,8 @@ def write_launch_kit(
         "receiptHash": str(parts["receipt_hash"]),
         "signerKeyId": kid,
         "fetchTimeoutMs": 5000,
+        "rateLimitMax": 240,
+        "rateLimitWindowMs": 60000,
         "receiptVerdict": "pass",
         "receiptIssuedAt": ISSUED_AT,
         "contentClass": "notice",
@@ -1886,6 +1890,97 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn(
             "web.env fetch timeout does not match launch summary",
+            result.detail,
+        )
+
+    def test_launch_kit_check_fails_when_web_env_rate_limit_is_invalid(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            web_env_path = kit / "web.env"
+            lines = web_env_path.read_text(encoding="utf-8").splitlines()
+            updated = [
+                (
+                    "GROUNDLOCK_RATE_LIMIT_MAX=0"
+                    if line.startswith("GROUNDLOCK_RATE_LIMIT_MAX=")
+                    else line
+                )
+                for line in lines
+            ]
+            web_env_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+            refresh_launch_kit_hashes(kit)
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn("web.env rate limit max", result.detail)
+
+    def test_launch_kit_check_fails_when_summary_rate_limit_is_not_integer(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            summary_path = kit / "launch-summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["rateLimitMax"] = True
+            summary_path.write_text(
+                json.dumps(summary, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn("launch summary rateLimitMax is missing", result.detail)
+
+    def test_launch_kit_check_fails_when_web_env_rate_limit_differs_from_summary(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            web_env_path = kit / "web.env"
+            lines = web_env_path.read_text(encoding="utf-8").splitlines()
+            updated = [
+                (
+                    "GROUNDLOCK_RATE_LIMIT_WINDOW_MS=120000"
+                    if line.startswith("GROUNDLOCK_RATE_LIMIT_WINDOW_MS=")
+                    else line
+                )
+                for line in lines
+            ]
+            web_env_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+            refresh_launch_kit_hashes(kit)
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            "web.env rate limit window does not match launch summary",
             result.detail,
         )
 

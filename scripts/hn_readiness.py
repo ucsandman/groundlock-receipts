@@ -46,6 +46,7 @@ DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 CHUNK_DATA_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 MAX_WEB_VERIFY_BYTES = 256 * 1024
 MAX_FETCH_TIMEOUT_MS = 30_000
+MAX_SAFE_INTEGER = 9_007_199_254_740_991
 STATUS_VALUES = {"active", "revoked", "retracted", "compromised"}
 LAUNCH_KIT_ARTIFACTS = {
     "dnsFixture": "dns-fixture.json",
@@ -729,6 +730,28 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
         failures.append(
             f"launch summary fetchTimeoutMs must be between 1 and {MAX_FETCH_TIMEOUT_MS} ms"
         )
+    summary_rate_limit_max = summary.get("rateLimitMax")
+    if not isinstance(summary_rate_limit_max, int) or isinstance(
+        summary_rate_limit_max, bool
+    ):
+        failures.append("launch summary rateLimitMax is missing")
+        summary_rate_limit_max = None
+    elif summary_rate_limit_max < 1 or summary_rate_limit_max > MAX_SAFE_INTEGER:
+        failures.append("launch summary rateLimitMax must be a positive safe integer")
+
+    summary_rate_limit_window_ms = summary.get("rateLimitWindowMs")
+    if not isinstance(summary_rate_limit_window_ms, int) or isinstance(
+        summary_rate_limit_window_ms, bool
+    ):
+        failures.append("launch summary rateLimitWindowMs is missing")
+        summary_rate_limit_window_ms = None
+    elif (
+        summary_rate_limit_window_ms < 1
+        or summary_rate_limit_window_ms > MAX_SAFE_INTEGER
+    ):
+        failures.append(
+            "launch summary rateLimitWindowMs must be a positive safe integer"
+        )
 
     summary_domain = summary.get("domain")
     if not isinstance(summary_domain, str):
@@ -862,6 +885,8 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
             fixture_status_records,
             expected_site_url,
             summary_fetch_timeout_ms,
+            summary_rate_limit_max,
+            summary_rate_limit_window_ms,
         )
         if web_env_result:
             failures.append(web_env_result)
@@ -1102,6 +1127,8 @@ def validate_launch_kit_web_env(
     fixture_status_records: list[dict[str, object]],
     expected_site_url: str | None,
     expected_fetch_timeout_ms: int | None,
+    expected_rate_limit_max: int | None,
+    expected_rate_limit_window_ms: int | None,
 ) -> str | None:
     try:
         entries, failures = parse_web_env(path.read_text(encoding="utf-8"))
@@ -1116,6 +1143,8 @@ def validate_launch_kit_web_env(
         "GROUNDLOCK_DOH_ENDPOINT",
         "GROUNDLOCK_STATUS_BASE_URL",
         "GROUNDLOCK_FETCH_TIMEOUT_MS",
+        "GROUNDLOCK_RATE_LIMIT_MAX",
+        "GROUNDLOCK_RATE_LIMIT_WINDOW_MS",
         "GROUNDLOCK_STATUS_RECORDS_JSON",
     }
     missing = sorted(required - set(entries))
@@ -1151,6 +1180,30 @@ def validate_launch_kit_web_env(
             web_env_failures.append(
                 "web.env fetch timeout does not match launch summary"
             )
+    rate_limit_max = parse_positive_safe_int(entries["GROUNDLOCK_RATE_LIMIT_MAX"])
+    if rate_limit_max is None:
+        web_env_failures.append(
+            "web.env rate limit max must be a positive safe integer"
+        )
+    elif (
+        expected_rate_limit_max is not None
+        and rate_limit_max != expected_rate_limit_max
+    ):
+        web_env_failures.append("web.env rate limit max does not match launch summary")
+    rate_limit_window_ms = parse_positive_safe_int(
+        entries["GROUNDLOCK_RATE_LIMIT_WINDOW_MS"]
+    )
+    if rate_limit_window_ms is None:
+        web_env_failures.append(
+            "web.env rate limit window must be a positive safe integer"
+        )
+    elif (
+        expected_rate_limit_window_ms is not None
+        and rate_limit_window_ms != expected_rate_limit_window_ms
+    ):
+        web_env_failures.append(
+            "web.env rate limit window does not match launch summary"
+        )
     try:
         bundled_status_records = json.loads(entries["GROUNDLOCK_STATUS_RECORDS_JSON"])
     except json.JSONDecodeError as exc:
@@ -1166,6 +1219,18 @@ def validate_launch_kit_web_env(
     if web_env_failures:
         return "; ".join(web_env_failures)
     return None
+
+
+def parse_positive_safe_int(value: str) -> int | None:
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+    if str(parsed) != value.strip():
+        return None
+    if parsed < 1 or parsed > MAX_SAFE_INTEGER:
+        return None
+    return parsed
 
 
 def fixture_txt_records_for_launch_kit(dns_fixture: str) -> dict[str, list[str]] | str:

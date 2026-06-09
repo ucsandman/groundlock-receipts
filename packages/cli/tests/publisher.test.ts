@@ -129,6 +129,8 @@ describe("publisher SDK", () => {
     expect(env).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.example/dns-query");
     expect(env).toContain("GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status");
     expect(env).toContain("GROUNDLOCK_FETCH_TIMEOUT_MS=5000");
+    expect(env).toContain("GROUNDLOCK_RATE_LIMIT_MAX=240");
+    expect(env).toContain("GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000");
     expect(env).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
     expect(env).toContain('"kind":"key"');
     expect(env).toContain('"kind":"claim"');
@@ -175,6 +177,8 @@ describe("publisher SDK", () => {
     expect(webEnv).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
     expect(webEnv).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.example/dns-query");
     expect(webEnv).toContain("GROUNDLOCK_FETCH_TIMEOUT_MS=5000");
+    expect(webEnv).toContain("GROUNDLOCK_RATE_LIMIT_MAX=240");
+    expect(webEnv).toContain("GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000");
     expect(statusRecords).toContain('"kind": "key"');
     expect(statusRecords).toContain('"kind": "claim"');
     expect(summary.schema).toBe("groundlock-launch-kit/v1");
@@ -182,6 +186,8 @@ describe("publisher SDK", () => {
     expect(summary.receiptIssuedAt).toBeTypeOf("string");
     expect(summary.contentClass).toBe("publisher-file");
     expect(summary.fetchTimeoutMs).toBe(5000);
+    expect(summary.rateLimitMax).toBe(240);
+    expect(summary.rateLimitWindowMs).toBe(60000);
     expect(summary.dnsTxtRecordCount).toBeGreaterThan(0);
     expect(summary.artifacts.runbook).toBe("runbook.md");
     expect(summary.artifacts.checksums).toBe("checksums.txt");
