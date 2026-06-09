@@ -301,7 +301,7 @@ def validate_public_https_url(label: str, value: str) -> list[str]:
     if not parsed.hostname:
         failures.append(f"{label} must include a hostname")
         return failures
-    failures.extend(validate_public_domain(label, parsed.hostname))
+    failures.extend(validate_public_domain(label, parsed.hostname, allow_ip=False))
     return failures
 
 

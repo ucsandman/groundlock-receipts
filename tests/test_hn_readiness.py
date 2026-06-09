@@ -533,7 +533,9 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(result.name, "launch-targets")
         self.assertIn("health-url must use https", result.detail)
-        self.assertIn("private or local IP", result.detail)
+        self.assertIn(
+            "doh-endpoint must be a DNS name, not an IP address", result.detail
+        )
         self.assertIn("reserved placeholder", result.detail)
 
     def test_launch_targets_accept_public_https_values(self) -> None:
@@ -606,6 +608,25 @@ class HnReadinessTests(unittest.TestCase):
         )
         self.assertIn("doh-endpoint must not include query or fragment", result.detail)
         self.assertIn("domain must be a DNS name, not an IP address", result.detail)
+
+    def test_launch_targets_reject_public_ip_url_hosts(self) -> None:
+        result = hn_readiness.check_launch_targets(
+            SimpleNamespace(
+                health_url="https://93.184.216.34/api/health",
+                status_base_url="https://1.1.1.1/groundlock/status",
+                doh_endpoint="https://8.8.8.8/dns-query",
+                domain="receipts.groundlock.dev",
+            )
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("health-url must be a DNS name, not an IP address", result.detail)
+        self.assertIn(
+            "status-base-url must be a DNS name, not an IP address", result.detail
+        )
+        self.assertIn(
+            "doh-endpoint must be a DNS name, not an IP address", result.detail
+        )
 
     def test_response_headers_require_production_security_headers(self) -> None:
         ok = hn_readiness.validate_response_headers(
