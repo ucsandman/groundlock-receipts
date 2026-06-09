@@ -922,9 +922,21 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
 
 def scan_launch_kit_public_artifacts(root: Path) -> list[str]:
     failures = []
-    for artifact_name in sorted(set(LAUNCH_KIT_ARTIFACTS.values())):
-        artifact_path = root / artifact_name
+    try:
+        entries = sorted(root.iterdir(), key=lambda path: path.name)
+    except OSError as exc:
+        return [f"could not list launch kit files: {exc}"]
+    for artifact_path in entries:
+        artifact_name = artifact_path.name
+        if artifact_path.is_dir():
+            failures.append(
+                f"launch kit contains unexpected directory: {artifact_name}"
+            )
+            continue
         if not artifact_path.is_file():
+            failures.append(
+                f"launch kit contains unexpected non-file entry: {artifact_name}"
+            )
             continue
         try:
             text = artifact_path.read_text(encoding="utf-8", errors="replace")

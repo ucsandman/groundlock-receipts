@@ -45,7 +45,7 @@ docs/deployment.md documents live verifier mode with GROUNDLOCK_SIGNER_DOMAIN, e
 `groundlock export-web-env <dns-fixture.json> --status-base-url <url> --site-url <public verifier URL> --doh-endpoint <url>` prints the deploy env block for the public web verifier.
 `groundlock warm-cache <dns-fixture.json> --doh-endpoint <url>` warms and compares the expected DNS TXT records through the configured resolver path.
 The release gate is `groundlock check-live <file-or-hash> --domain <domain> --status-base-url <url> --doh-endpoint <url>` returning PASS against the configured resolver path.
-The final go/no-go audit is `python .\scripts\hn_readiness.py --health-url <url> --dns-fixture <launch-kit\dns-fixture.json> --launch-kit <launch-kit> --file-or-hash <file-or-hash> --domain <domain> --status-base-url <url> --doh-endpoint <url> --evidence-out <path>`, which verifies launch-kit artifact checksums, posts the same public file or hash to the deployed `/api/verify` endpoint, requires PASS, and writes machine-readable evidence.
+The final go/no-go audit is `python .\scripts\hn_readiness.py --health-url <url> --dns-fixture <launch-kit\dns-fixture.json> --launch-kit <launch-kit> --file-or-hash <file-or-hash> --domain <domain> --status-base-url <url> --doh-endpoint <url> --evidence-out <path>`, which verifies launch-kit artifact checksums, scans every root launch-kit file for private key material, rejects subdirectories, posts the same public file or hash to the deployed `/api/verify` endpoint, requires PASS, and writes machine-readable evidence.
 
 Before removing LOCAL_DEMO_ONLY, deployment needs:
 - public HTTPS deployment of the web verifier
