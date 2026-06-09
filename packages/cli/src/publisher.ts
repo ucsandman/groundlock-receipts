@@ -179,6 +179,11 @@ interface LaunchFixtureReceipt {
   records: DnsCacheRecords;
 }
 
+interface PublicLaunchManifest {
+  name: string;
+  manifest: CacheManifestRecord;
+}
+
 export async function generateKeyFiles(opts: GenerateKeyFilesOptions): Promise<GenerateKeyFilesResult> {
   await mkdir(opts.outDir, { recursive: true });
   const key = generateSigningKey(opts.kid);
@@ -622,19 +627,25 @@ function validatePublicLaunchFixtureStatuses(fixture: DnsFixture): void {
   if (!/^sha256:[A-Za-z0-9_-]+$/.test(claim.subject.receiptHash)) {
     throw new Error("launch_fixture_status_mismatch");
   }
-  const manifest = singlePublicLaunchManifest(fixture);
+  const { name, manifest } = singlePublicLaunchManifest(fixture);
   validateFixtureStatuses(fixture, manifest);
+  validatePublicLaunchFixtureReceipt(fixture, name, manifest);
 }
 
-function singlePublicLaunchManifest(fixture: DnsFixture): CacheManifestRecord {
-  const manifests: CacheManifestRecord[] = [];
-  for (const values of Object.values(fixture.txt)) {
+function singlePublicLaunchManifest(fixture: DnsFixture): PublicLaunchManifest {
+  const manifests: PublicLaunchManifest[] = [];
+  for (const [name, values] of Object.entries(fixture.txt)) {
     if (!Array.isArray(values)) throw new Error("invalid_fixture");
     for (const value of values) {
       if (typeof value !== "string") throw new Error("invalid_fixture");
       if (!value.trim().startsWith("gdm1 ")) continue;
+      const normalizedName = normalizeName(name);
+      const expectedSuffix = `._groundlock.${normalizeDomain(fixture.domain)}`;
+      if (!normalizedName.startsWith("gl-") || !normalizedName.endsWith(expectedSuffix)) {
+        throw new Error("launch_fixture_manifest_name_mismatch");
+      }
       try {
-        manifests.push(parseCacheManifestRecord(value));
+        manifests.push({ name: normalizedName, manifest: parseCacheManifestRecord(value) });
       } catch {
         throw new Error("launch_fixture_manifest_malformed");
       }
@@ -643,6 +654,47 @@ function singlePublicLaunchManifest(fixture: DnsFixture): CacheManifestRecord {
   if (manifests.length === 0) throw new Error("launch_fixture_manifest_missing");
   if (manifests.length > 1) throw new Error("launch_fixture_manifest_ambiguous");
   return manifests[0]!;
+}
+
+function validatePublicLaunchFixtureReceipt(fixture: DnsFixture, manifestName: string, manifest: CacheManifestRecord): void {
+  const chunks: string[] = [];
+  for (let index = 0; index < manifest.chunkCount; index++) {
+    const chunkText = uniqueTxtValue(fixture, `c${index}.${manifestName}`, "cache_chunk");
+    const chunk = parseLaunchCacheChunkRecord(chunkText);
+    if (chunk.index !== index) throw new Error("launch_chunk_index_mismatch");
+    chunks.push(chunk.data);
+  }
+  const payload = chunks.join("");
+  if (sha256(payload) !== manifest.payloadHash) throw new Error("launch_payload_hash_mismatch");
+
+  let receipt: ProofReceipt;
+  try {
+    receipt = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as ProofReceipt;
+  } catch {
+    throw new Error("launch_receipt_malformed");
+  }
+  if (
+    !isRecord(receipt) ||
+    typeof receipt.candidateHash !== "string" ||
+    typeof receipt.signerDomain !== "string" ||
+    typeof receipt.signerKeyId !== "string"
+  ) {
+    throw new Error("launch_receipt_malformed");
+  }
+  if (normalizeName(contentHashToDnsName(receipt.candidateHash, fixture.domain)) !== manifestName) {
+    throw new Error("launch_receipt_hash_mismatch");
+  }
+  if (normalizeDomain(receipt.signerDomain) !== normalizeDomain(fixture.domain)) throw new Error("launch_receipt_domain_mismatch");
+  if (receipt.signerKeyId !== manifest.kid) throw new Error("launch_receipt_key_mismatch");
+  if (receiptStatusHash(receipt) !== manifest.receiptHash) throw new Error("launch_receipt_status_hash_mismatch");
+}
+
+function parseLaunchCacheChunkRecord(record: string): ReturnType<typeof parseCacheChunkRecord> {
+  try {
+    return parseCacheChunkRecord(record);
+  } catch {
+    throw new Error("launch_chunk_malformed");
+  }
 }
 
 function isKeyStatusRecordShape(value: unknown): value is KeyStatusRecord {
