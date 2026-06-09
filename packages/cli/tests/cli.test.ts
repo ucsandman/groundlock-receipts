@@ -114,18 +114,18 @@ describe("CLI entrypoint", () => {
       "export-web-env",
       path.join(outDir, "dns-fixture.json"),
       "--status-base-url",
-      "https://publisher.example/groundlock/status",
+      "https://publisher.groundlock.dev/groundlock/status",
       "--site-url",
       "https://receipts.groundlock.dev/path",
       "--doh-endpoint",
-      "https://resolver.example/dns-query",
+      "https://resolver.groundlock.dev/dns-query",
     ]);
 
     expect(code).toBe(0);
     const out = stdout.mock.calls.map((call) => String(call[0])).join("");
     expect(out).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.example");
     expect(out).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
-    expect(out).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.example/dns-query");
+    expect(out).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.groundlock.dev/dns-query");
     expect(out).toContain("GROUNDLOCK_FETCH_TIMEOUT_MS=5000");
     expect(out).toContain("GROUNDLOCK_STATUS_RECORDS_JSON=");
   });
@@ -158,7 +158,7 @@ describe("CLI entrypoint", () => {
       "export-web-env",
       path.join(outDir, "dns-fixture.json"),
       "--status-base-url",
-      "https://publisher.example/groundlock/status",
+      "https://publisher.groundlock.dev/groundlock/status",
       "--site-url",
       "https://receipts.groundlock.dev/path",
     ]);
@@ -196,11 +196,11 @@ describe("CLI entrypoint", () => {
       "export-web-env",
       path.join(outDir, "dns-fixture.json"),
       "--status-base-url",
-      "https://publisher.example/groundlock/status",
+      "https://publisher.groundlock.dev/groundlock/status",
       "--site-url",
       "https://receipts.groundlock.dev/path",
       "--doh-endpoint",
-      "http://resolver.example/dns-query",
+      "http://resolver.groundlock.dev/dns-query",
     ]);
 
     expect(code).toBe(1);
@@ -236,11 +236,51 @@ describe("CLI entrypoint", () => {
       "export-web-env",
       path.join(outDir, "dns-fixture.json"),
       "--status-base-url",
-      "https://publisher.example/groundlock/status#fragment",
+      "https://publisher.groundlock.dev/groundlock/status#fragment",
       "--site-url",
       "https://user:pass@receipts.groundlock.dev/path",
       "--doh-endpoint",
-      "https://resolver.example/dns-query?bootstrap=1",
+      "https://resolver.groundlock.dev/dns-query?bootstrap=1",
+    ]);
+
+    expect(code).toBe(1);
+    const err = stderr.mock.calls.map((call) => String(call[0])).join("");
+    expect(err).toContain("invalid_doh_endpoint");
+  });
+
+  it("fails export-web-env when launch URLs use reserved placeholder hosts", async () => {
+    const { dir, sourcePath, blockedPath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const outDir = path.join(dir, "publish");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await main([
+      "local-publish",
+      blockedPath,
+      "--source",
+      sourcePath,
+      "--domain",
+      "publisher.example",
+      "--kid",
+      key.kid,
+      "--key",
+      JSON.stringify(key.privateKeyJwk),
+      "--public-key",
+      JSON.stringify(key.publicKeyJwk),
+      "--out",
+      outDir,
+    ]);
+    stderr.mockClear();
+
+    const code = await main([
+      "export-web-env",
+      path.join(outDir, "dns-fixture.json"),
+      "--status-base-url",
+      "https://publisher.example/groundlock/status",
+      "--site-url",
+      "https://receipts.example.com/path",
+      "--doh-endpoint",
+      "https://resolver.example/dns-query",
     ]);
 
     expect(code).toBe(1);
@@ -280,9 +320,9 @@ describe("CLI entrypoint", () => {
       "--site-url",
       "https://receipts.groundlock.dev/path",
       "--status-base-url",
-      "https://publisher.example/groundlock/status",
+      "https://publisher.groundlock.dev/groundlock/status",
       "--doh-endpoint",
-      "https://resolver.example/dns-query",
+      "https://resolver.groundlock.dev/dns-query",
       "--file-or-hash",
       filePath,
       "--ttl",
@@ -419,7 +459,7 @@ describe("CLI entrypoint", () => {
       "warm-cache",
       fixturePath,
       "--doh-endpoint",
-      "https://resolver.example/dns-query",
+      "https://resolver.groundlock.dev/dns-query",
     ]);
 
     expect(code).toBe(0);
@@ -493,7 +533,7 @@ describe("CLI entrypoint", () => {
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
         const url = new URL(String(input));
-        if (url.origin === "https://resolver.example") {
+        if (url.origin === "https://resolver.groundlock.dev") {
           const name = url.searchParams.get("name") ?? "";
           return jsonResponse({
             Status: txt[name] ? 0 : 3,
@@ -501,10 +541,10 @@ describe("CLI entrypoint", () => {
             Answer: (txt[name] ?? []).map((data) => ({ type: 16, data: `"${data}"` })),
           });
         }
-        if (url.href.startsWith("https://status.example/groundlock/key?")) {
+        if (url.href.startsWith("https://status.groundlock.dev/groundlock/key?")) {
           return jsonResponse(keyStatus);
         }
-        if (url.href.startsWith("https://status.example/groundlock/claim?")) {
+        if (url.href.startsWith("https://status.groundlock.dev/groundlock/claim?")) {
           return jsonResponse(claimStatus);
         }
         throw new Error(`unexpected fetch ${url.href}`);
@@ -518,9 +558,9 @@ describe("CLI entrypoint", () => {
       "--domain",
       signerDomain,
       "--doh-endpoint",
-      "https://resolver.example/dns-query",
+      "https://resolver.groundlock.dev/dns-query",
       "--status-base-url",
-      "https://status.example/groundlock",
+      "https://status.groundlock.dev/groundlock",
     ]);
 
     expect(code).toBe(0);
@@ -536,7 +576,7 @@ describe("CLI entrypoint", () => {
       "--domain",
       "publisher.example",
       "--status-base-url",
-      "https://status.example/groundlock",
+      "https://status.groundlock.dev/groundlock",
     ]);
 
     expect(code).toBe(1);
@@ -555,7 +595,7 @@ describe("CLI entrypoint", () => {
       "--domain",
       "publisher.example",
       "--doh-endpoint",
-      "https://resolver.example/dns-query",
+      "https://resolver.groundlock.dev/dns-query",
       "--status-base-url",
       "not-url",
     ]);

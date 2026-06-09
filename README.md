@@ -83,14 +83,14 @@ npm run dev --workspace @groundlock/web -- --hostname 127.0.0.1 --port 3000
 docker build -t groundlock-web .
 docker run --rm -p 3000:3000 groundlock-web
 groundlock generate-key launch-key-1 --out .\keys
-groundlock local-publish .\notice.txt --source .\source.json --domain publisher.example --kid launch-key-1 --key .\keys\launch-key-1.private.jwk --public-key .\keys\launch-key-1.public.jwk --out .\published
-groundlock launch-kit .\published\dns-fixture.json --out .\published\launch-kit --site-url https://receipts.example.com --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --file-or-hash .\notice.txt
-groundlock export-web-env .\published\dns-fixture.json --status-base-url https://publisher.example/groundlock/status --site-url https://receipts.example.com --doh-endpoint https://cloudflare-dns.com/dns-query
-groundlock setup-domain publisher.example --receipt .\receipt.json --public-key .\public.jwk
-groundlock setup-domain publisher.example --receipt .\receipt.json --public-key .\public.jwk --format zone --ttl 300
+groundlock local-publish .\notice.txt --source .\source.json --domain publisher.groundlock.dev --kid launch-key-1 --key .\keys\launch-key-1.private.jwk --public-key .\keys\launch-key-1.public.jwk --out .\published
+groundlock launch-kit .\published\dns-fixture.json --out .\published\launch-kit --site-url https://receipts.groundlock.dev --status-base-url https://receipts.groundlock.dev/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --file-or-hash .\notice.txt
+groundlock export-web-env .\published\dns-fixture.json --status-base-url https://receipts.groundlock.dev/groundlock/status --site-url https://receipts.groundlock.dev --doh-endpoint https://cloudflare-dns.com/dns-query
+groundlock setup-domain publisher.groundlock.dev --receipt .\receipt.json --public-key .\public.jwk
+groundlock setup-domain publisher.groundlock.dev --receipt .\receipt.json --public-key .\public.jwk --format zone --ttl 300
 groundlock warm-cache .\published\dns-fixture.json --doh-endpoint https://cloudflare-dns.com/dns-query
-groundlock check-live sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
-python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\launch-kit\dns-fixture.json --launch-kit .\published\launch-kit --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --evidence-out .\published\launch-kit\hn-readiness-evidence.json
+groundlock check-live sha256:<hash> --domain publisher.groundlock.dev --status-base-url https://receipts.groundlock.dev/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
+python .\scripts\hn_readiness.py --health-url https://receipts.groundlock.dev --dns-fixture .\published\launch-kit\dns-fixture.json --launch-kit .\published\launch-kit --file-or-hash sha256:<hash> --domain publisher.groundlock.dev --status-base-url https://receipts.groundlock.dev/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --evidence-out .\published\launch-kit\hn-readiness-evidence.json
 ```
 
 ## 60-second verify
@@ -147,7 +147,7 @@ The local web verifier does not require environment variables or secrets. It rec
 Production verifier mode is enabled by `GROUNDLOCK_SIGNER_DOMAIN`, with `NEXT_PUBLIC_SITE_URL`, `GROUNDLOCK_DOH_ENDPOINT`, and `GROUNDLOCK_STATUS_BASE_URL` set for public launch.
 Live DoH and status fetches default to a `5000` ms timeout per external request and can be tuned with `GROUNDLOCK_FETCH_TIMEOUT_MS` from `1` through `30000`.
 Public verifier rate limits default to `240` requests per `60000` ms per app instance and can be tuned with positive safe integer `GROUNDLOCK_RATE_LIMIT_MAX` and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS` values. Invalid configured values fail live health checks and make `/api/verify` fail closed.
-Use `.env.example` for placeholder names and deployment shape; never commit real `.env` files.
+Use `.env.example` for placeholder names and deployment shape; never commit real `.env` files. Public launch commands reject reserved placeholder hosts such as `.example`, `.test`, and `.localhost`; replace the sample `*.groundlock.dev` hosts with the real domains you control.
 
 Publisher signing keys belong in the CLI or a separately authenticated publisher workflow, not the public verifier deployment.
 
@@ -160,7 +160,7 @@ See [docs/show-hn-draft.md](docs/show-hn-draft.md). The current draft is marked 
 After the public deployment is live, run the fail-closed launch audit before removing that marker. It checks CI, public HTTPS launch targets, live verifier health, homepage canonical/share metadata, resolver-cache warming, live receipt verification, and the deployed `/api/verify` endpoint:
 
 ```powershell
-python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\launch-kit\dns-fixture.json --launch-kit .\published\launch-kit --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --evidence-out .\published\launch-kit\hn-readiness-evidence.json
+python .\scripts\hn_readiness.py --health-url https://receipts.groundlock.dev --dns-fixture .\published\launch-kit\dns-fixture.json --launch-kit .\published\launch-kit --file-or-hash sha256:<hash> --domain publisher.groundlock.dev --status-base-url https://receipts.groundlock.dev/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --evidence-out .\published\launch-kit\hn-readiness-evidence.json
 ```
 
 ## License

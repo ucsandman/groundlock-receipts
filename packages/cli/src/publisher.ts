@@ -37,6 +37,8 @@ export const DEFAULT_FETCH_TIMEOUT_MS = 5_000;
 export const DEFAULT_RATE_LIMIT_MAX = 240;
 export const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 const DNS_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const RESERVED_HOSTS = new Set(["example.com", "example.net", "example.org", "localhost"]);
+const RESERVED_SUFFIXES = [".example", ".example.com", ".example.net", ".example.org", ".invalid", ".localhost", ".test"];
 
 export interface SignFileOptions {
   filePath: string;
@@ -708,6 +710,9 @@ function isLaunchHttpsUrl(url: URL): boolean {
 function isDnsHostname(hostname: string): boolean {
   const host = hostname.trim().replace(/\.$/, "").toLowerCase();
   if (!host || host.length > 253 || !host.includes(".")) return false;
+  if (RESERVED_HOSTS.has(host) || RESERVED_SUFFIXES.some((suffix) => host.endsWith(suffix))) {
+    return false;
+  }
   if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(host) || host.includes(":") || host.includes("[")) {
     return false;
   }

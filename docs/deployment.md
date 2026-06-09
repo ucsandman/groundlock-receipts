@@ -10,18 +10,19 @@ The public verifier must not hold receipt-signing private keys.
 ## Environment
 
 Copy `.env.example` only as a placeholder reference. Do not commit a real `.env` file.
+The `*.groundlock.dev` hosts below are public-shaped examples; replace them with the signer, verifier, and status domains you control.
 
 ```text
-GROUNDLOCK_SIGNER_DOMAIN=publisher.example
-NEXT_PUBLIC_SITE_URL=https://receipts.example.com
+GROUNDLOCK_SIGNER_DOMAIN=publisher.groundlock.dev
+NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev
 GROUNDLOCK_DOH_ENDPOINT=https://cloudflare-dns.com/dns-query
-GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status
+GROUNDLOCK_STATUS_BASE_URL=https://receipts.groundlock.dev/groundlock/status
 GROUNDLOCK_FETCH_TIMEOUT_MS=5000
 GROUNDLOCK_RATE_LIMIT_MAX=240
 GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000
 ```
 
-Demo mode does not use live DoH. When `GROUNDLOCK_SIGNER_DOMAIN` is set, it must be a real public DNS host, not a reserved placeholder, local host, malformed name, or IP address. `GROUNDLOCK_DOH_ENDPOINT` is required and must be a valid HTTPS URL so the verifier does not silently fall back to an unintended resolver. `groundlock export-web-env`, `groundlock warm-cache`, and `groundlock check-live` reject malformed, non-HTTPS, credentialed, query-suffixed, fragment-suffixed, or IP-based launch URLs before making resolver or status requests. The live web verifier and Hacker News readiness audit also reject reserved placeholder launch hosts such as `.example`, `.test`, and `.localhost`. The readiness audit requires the deployed verifier to report `dohEndpointConfigured` and requires `warm-cache`, `check-live`, and `hn_readiness.py` to use the same DoH endpoint URL. The DoH response must include the DNSSEC AD signal; otherwise the verifier fails closed with `dnssec_not_validated`.
+Demo mode does not use live DoH. When `GROUNDLOCK_SIGNER_DOMAIN` is set, it must be a real public DNS host, not a reserved placeholder, local host, malformed name, or IP address. `GROUNDLOCK_DOH_ENDPOINT` is required and must be a valid HTTPS URL so the verifier does not silently fall back to an unintended resolver. `groundlock launch-kit`, `groundlock export-web-env`, `groundlock warm-cache`, and `groundlock check-live` reject malformed, non-HTTPS, credentialed, query-suffixed, fragment-suffixed, reserved placeholder, local, or IP-based launch URLs before making resolver or status requests. The live web verifier and Hacker News readiness audit also reject reserved placeholder launch hosts such as `.example`, `.test`, and `.localhost`. The readiness audit requires the deployed verifier to report `dohEndpointConfigured` and requires `warm-cache`, `check-live`, and `hn_readiness.py` to use the same DoH endpoint URL. The DoH response must include the DNSSEC AD signal; otherwise the verifier fails closed with `dnssec_not_validated`.
 
 The verifier initializes demo signing material only for demo-mode fixture verification. When `GROUNDLOCK_SIGNER_DOMAIN` enables live verifier mode, `/api/verify` uses the configured DNS/status paths without generating demo signing keys or issuing new receipts.
 
@@ -46,7 +47,7 @@ docker run --rm -p 3000:3000 groundlock-web
 For a public deployment, pass the verifier origin at build time so the statically rendered homepage carries the correct canonical and share metadata:
 
 ```powershell
-docker build --build-arg NEXT_PUBLIC_SITE_URL=https://receipts.example.com -t groundlock-web .
+docker build --build-arg NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev -t groundlock-web .
 ```
 
 For live verifier mode, pass the generated environment block from `groundlock export-web-env --status-base-url <url> --doh-endpoint <url> --site-url <public verifier URL>` through your host's secret/env system. The generated block includes `GROUNDLOCK_FETCH_TIMEOUT_MS=5000`, `GROUNDLOCK_RATE_LIMIT_MAX=240`, and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000` so live resolver, status, and public verifier request handling have bounded defaults. For local testing, write those values to an uncommitted `.env` file and run:
@@ -72,13 +73,13 @@ groundlock generate-key launch-key-1 --out .\keys
 The command writes `launch-key-1.private.jwk` and `launch-key-1.public.jwk` and prints only file paths. Keep the private JWK in the publisher signing workflow or managed key storage; do not put it in the web verifier, Docker image, DNS, `.env`, or Git. The public JWK is used for DNS identity records:
 
 ```powershell
-groundlock local-publish .\notice.txt --source .\source.json --domain publisher.example --kid launch-key-1 --key .\keys\launch-key-1.private.jwk --public-key .\keys\launch-key-1.public.jwk --out .\published
+groundlock local-publish .\notice.txt --source .\source.json --domain publisher.groundlock.dev --kid launch-key-1 --key .\keys\launch-key-1.private.jwk --public-key .\keys\launch-key-1.public.jwk --out .\published
 ```
 
 Generate a launch kit from that same fixture before configuring the public verifier:
 
 ```powershell
-groundlock launch-kit .\published\dns-fixture.json --out .\published\launch-kit --site-url https://receipts.example.com --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --file-or-hash .\notice.txt --ttl 300
+groundlock launch-kit .\published\dns-fixture.json --out .\published\launch-kit --site-url https://receipts.groundlock.dev --status-base-url https://receipts.groundlock.dev/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --file-or-hash .\notice.txt --ttl 300
 ```
 
 The launch kit is a public deployment bundle. It writes:
@@ -143,7 +144,7 @@ PASS warmed <n> DNS TXT names
 Use the CLI to verify the same public path the web verifier will use:
 
 ```powershell
-groundlock check-live .\notice.txt --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
+groundlock check-live .\notice.txt --domain publisher.groundlock.dev --status-base-url https://receipts.groundlock.dev/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query
 ```
 
 Expected output:
@@ -164,14 +165,14 @@ GET <GROUNDLOCK_STATUS_BASE_URL>/claim?lookup=claim:<receipt-hash>
 The bundled web app can serve these endpoints at `/groundlock/status/key` and `/groundlock/status/claim` when `GROUNDLOCK_STATUS_RECORDS_JSON` is configured. For a same-origin deployment, set both variables with a parseable bundle containing an active key record for `GROUNDLOCK_SIGNER_DOMAIN` and an active `sha256:` claim record or `/api/health` returns `503`:
 
 ```text
-GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status
+GROUNDLOCK_STATUS_BASE_URL=https://receipts.groundlock.dev/groundlock/status
 GROUNDLOCK_STATUS_RECORDS_JSON=[...public key and claim status records...]
 ```
 
 Generate the full web env block from a local publish fixture:
 
 ```powershell
-groundlock export-web-env .\published\dns-fixture.json --status-base-url https://publisher.example/groundlock/status --site-url https://receipts.example.com --doh-endpoint https://cloudflare-dns.com/dns-query
+groundlock export-web-env .\published\dns-fixture.json --status-base-url https://receipts.groundlock.dev/groundlock/status --site-url https://receipts.groundlock.dev --doh-endpoint https://cloudflare-dns.com/dns-query
 ```
 
 `--doh-endpoint` is required because the generated block enables live verifier mode, and live mode fails closed without an explicit resolver URL. Set `--site-url` for any live verifier deployment; `/api/health` fails closed without `NEXT_PUBLIC_SITE_URL`, and the readiness audit expects the deployed verifier to report `siteUrlConfigured` and render canonical/share metadata for the public origin. If a path is provided, the CLI writes only the origin.
@@ -207,7 +208,7 @@ Use HTTP `404` for missing status records. Use `revoked`, `retracted`, or `compr
 After the public verifier, DNS records, resolver cache warming, status endpoints, and CI are in place, run:
 
 ```powershell
-python .\scripts\hn_readiness.py --health-url https://publisher.example --dns-fixture .\published\launch-kit\dns-fixture.json --launch-kit .\published\launch-kit --file-or-hash sha256:<hash> --domain publisher.example --status-base-url https://publisher.example/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --evidence-out .\published\launch-kit\hn-readiness-evidence.json
+python .\scripts\hn_readiness.py --health-url https://receipts.groundlock.dev --dns-fixture .\published\launch-kit\dns-fixture.json --launch-kit .\published\launch-kit --file-or-hash sha256:<hash> --domain publisher.groundlock.dev --status-base-url https://receipts.groundlock.dev/groundlock/status --doh-endpoint https://cloudflare-dns.com/dns-query --evidence-out .\published\launch-kit\hn-readiness-evidence.json
 ```
 
 `--health-url` must be the deployed verifier root URL or its exact `/api/health` URL. Nested app paths are rejected so the audit does not probe `<path>/api/health` or compare homepage metadata against the wrong launch URL.

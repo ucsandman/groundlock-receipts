@@ -119,15 +119,15 @@ describe("publisher SDK", () => {
 
     const env = await exportWebEnv({
       fixturePath: published.fixturePath,
-      statusBaseUrl: "https://publisher.example/groundlock/status",
-      dohEndpoint: "https://resolver.example/dns-query",
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
       siteUrl: "https://receipts.groundlock.dev/share",
     });
 
     expect(env).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.example");
     expect(env).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
-    expect(env).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.example/dns-query");
-    expect(env).toContain("GROUNDLOCK_STATUS_BASE_URL=https://publisher.example/groundlock/status");
+    expect(env).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.groundlock.dev/dns-query");
+    expect(env).toContain("GROUNDLOCK_STATUS_BASE_URL=https://publisher.groundlock.dev/groundlock/status");
     expect(env).toContain("GROUNDLOCK_FETCH_TIMEOUT_MS=5000");
     expect(env).toContain("GROUNDLOCK_RATE_LIMIT_MAX=240");
     expect(env).toContain("GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000");
@@ -157,8 +157,8 @@ describe("publisher SDK", () => {
       fixturePath: published.fixturePath,
       outDir: kitDir,
       siteUrl: "https://receipts.groundlock.dev/path",
-      statusBaseUrl: "https://publisher.example/groundlock/status",
-      dohEndpoint: "https://resolver.example/dns-query",
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
       fileOrHash: filePath,
       ttl: 600,
     });
@@ -175,7 +175,7 @@ describe("publisher SDK", () => {
     expect(kit.receiptHash).toBe(summary.receiptHash);
     expect(zone).toContain('_truename.publisher.example. 600 IN TXT "');
     expect(webEnv).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
-    expect(webEnv).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.example/dns-query");
+    expect(webEnv).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.groundlock.dev/dns-query");
     expect(webEnv).toContain("GROUNDLOCK_FETCH_TIMEOUT_MS=5000");
     expect(webEnv).toContain("GROUNDLOCK_RATE_LIMIT_MAX=240");
     expect(webEnv).toContain("GROUNDLOCK_RATE_LIMIT_WINDOW_MS=60000");
@@ -237,8 +237,8 @@ describe("publisher SDK", () => {
       fixturePath: published.fixturePath,
       outDir: path.join(dir, "launch-kit"),
       siteUrl: "https://receipts.groundlock.dev",
-      statusBaseUrl: "https://publisher.example/groundlock/status",
-      dohEndpoint: "https://resolver.example/dns-query",
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
       fileOrHash: blockedPath,
     })).rejects.toThrow("launch_receipt_not_pass");
   });
@@ -264,8 +264,8 @@ describe("publisher SDK", () => {
       fixturePath: published.fixturePath,
       outDir: path.join(dir, "launch-kit"),
       siteUrl: "https://receipts.groundlock.dev",
-      statusBaseUrl: "https://publisher.example/groundlock/status",
-      dohEndpoint: "https://resolver.example/dns-query",
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
       fileOrHash: filePath,
     })).rejects.toThrow("launch_identity_key_mismatch");
   });
@@ -286,7 +286,7 @@ describe("publisher SDK", () => {
 
     const opts = {
       fixturePath: published.fixturePath,
-      statusBaseUrl: "https://publisher.example/groundlock/status",
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
       siteUrl: "https://receipts.groundlock.dev/share",
     } as unknown as Parameters<typeof exportWebEnv>[0];
 
@@ -294,15 +294,18 @@ describe("publisher SDK", () => {
   });
 
   it.each([
-    ["DoH endpoint", { dohEndpoint: "http://resolver.example/dns-query" }, "invalid_doh_endpoint"],
-    ["DoH endpoint", { dohEndpoint: "https://user:pass@resolver.example/dns-query" }, "invalid_doh_endpoint"],
-    ["DoH endpoint", { dohEndpoint: "https://bad_label.example/dns-query" }, "invalid_doh_endpoint"],
-    ["DoH endpoint", { dohEndpoint: "https://resolver.example/dns-query?bootstrap=1" }, "invalid_doh_endpoint"],
+    ["DoH endpoint", { dohEndpoint: "http://resolver.groundlock.dev/dns-query" }, "invalid_doh_endpoint"],
+    ["DoH endpoint", { dohEndpoint: "https://user:pass@resolver.groundlock.dev/dns-query" }, "invalid_doh_endpoint"],
+    ["DoH endpoint", { dohEndpoint: "https://bad_label.groundlock.dev/dns-query" }, "invalid_doh_endpoint"],
+    ["DoH endpoint", { dohEndpoint: "https://resolver.groundlock.dev/dns-query?bootstrap=1" }, "invalid_doh_endpoint"],
+    ["DoH endpoint", { dohEndpoint: "https://resolver.example/dns-query" }, "invalid_doh_endpoint"],
     ["status base URL", { statusBaseUrl: "not-url" }, "invalid_status_base_url"],
-    ["status base URL", { statusBaseUrl: "https://publisher.example/groundlock/status#fragment" }, "invalid_status_base_url"],
+    ["status base URL", { statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status#fragment" }, "invalid_status_base_url"],
+    ["status base URL", { statusBaseUrl: "https://publisher.example/groundlock/status" }, "invalid_status_base_url"],
     ["site URL", { siteUrl: "http://receipts.groundlock.dev/share" }, "invalid_site_url"],
     ["site URL", { siteUrl: "https://user:pass@receipts.groundlock.dev/share" }, "invalid_site_url"],
     ["site URL", { siteUrl: "https://bad_label.groundlock.dev/share" }, "invalid_site_url"],
+    ["site URL", { siteUrl: "https://receipts.example.com/share" }, "invalid_site_url"],
   ])("refuses to export a live web env block with an invalid %s", async (_label, override, error) => {
     const { dir, sourcePath, filePath } = await fixtureDir();
     const key = generateSigningKey("k1");
@@ -319,8 +322,8 @@ describe("publisher SDK", () => {
 
     await expect(exportWebEnv({
       fixturePath: published.fixturePath,
-      statusBaseUrl: "https://publisher.example/groundlock/status",
-      dohEndpoint: "https://resolver.example/dns-query",
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
       siteUrl: "https://receipts.groundlock.dev/share",
       ...override,
     })).rejects.toThrow(error);
@@ -355,7 +358,7 @@ describe("publisher SDK", () => {
 
     const result = await warmDnsCache({
       fixturePath: published.fixturePath,
-      dohEndpoint: "https://resolver.example/dns-query",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
     });
 
     expect(result).toEqual({ state: "PASS", checked: Object.keys(fixture.txt).length, failures: [] });
@@ -397,7 +400,7 @@ describe("publisher SDK", () => {
 
     await expect(warmDnsCache({
       fixturePath: published.fixturePath,
-      dohEndpoint: "http://resolver.example/dns-query",
+      dohEndpoint: "http://resolver.groundlock.dev/dns-query",
     })).rejects.toThrow("invalid_doh_endpoint");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -406,19 +409,21 @@ describe("publisher SDK", () => {
     const opts = {
       input: "sha256:abc123",
       domain: "publisher.example",
-      statusBaseUrl: "https://publisher.example/groundlock/status",
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
     } as unknown as Parameters<typeof verifyLive>[0];
 
     await expect(verifyLive(opts)).rejects.toThrow("missing_doh_endpoint");
   });
 
   it.each([
-    ["DoH endpoint", { dohEndpoint: "http://resolver.example/dns-query" }, "invalid_doh_endpoint"],
-    ["DoH endpoint", { dohEndpoint: "https://user:pass@resolver.example/dns-query" }, "invalid_doh_endpoint"],
-    ["DoH endpoint", { dohEndpoint: "https://bad_label.example/dns-query" }, "invalid_doh_endpoint"],
-    ["DoH endpoint", { dohEndpoint: "https://resolver.example/dns-query?bootstrap=1" }, "invalid_doh_endpoint"],
+    ["DoH endpoint", { dohEndpoint: "http://resolver.groundlock.dev/dns-query" }, "invalid_doh_endpoint"],
+    ["DoH endpoint", { dohEndpoint: "https://user:pass@resolver.groundlock.dev/dns-query" }, "invalid_doh_endpoint"],
+    ["DoH endpoint", { dohEndpoint: "https://bad_label.groundlock.dev/dns-query" }, "invalid_doh_endpoint"],
+    ["DoH endpoint", { dohEndpoint: "https://resolver.groundlock.dev/dns-query?bootstrap=1" }, "invalid_doh_endpoint"],
+    ["DoH endpoint", { dohEndpoint: "https://resolver.example/dns-query" }, "invalid_doh_endpoint"],
     ["status base URL", { statusBaseUrl: "not-url" }, "invalid_status_base_url"],
-    ["status base URL", { statusBaseUrl: "https://status.example/groundlock#fragment" }, "invalid_status_base_url"],
+    ["status base URL", { statusBaseUrl: "https://status.groundlock.dev/groundlock#fragment" }, "invalid_status_base_url"],
+    ["status base URL", { statusBaseUrl: "https://status.example/groundlock" }, "invalid_status_base_url"],
   ])("refuses live verification with an invalid %s", async (_label, override, error) => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
@@ -426,8 +431,8 @@ describe("publisher SDK", () => {
     await expect(verifyLive({
       input: "sha256:abc123",
       domain: "publisher.example",
-      dohEndpoint: "https://resolver.example/dns-query",
-      statusBaseUrl: "https://status.example/groundlock",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+      statusBaseUrl: "https://status.groundlock.dev/groundlock",
       ...override,
     })).rejects.toThrow(error);
     expect(fetchSpy).not.toHaveBeenCalled();
