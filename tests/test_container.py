@@ -77,6 +77,7 @@ class ContainerConfigTests(unittest.TestCase):
         self.assertIn("--verify-file-text", smoke)
         self.assertIn("statusRecordsConfigured", smoke)
         self.assertIn("/groundlock/status/", smoke)
+        self.assertIn("subject does not match", smoke)
 
 
 if __name__ == "__main__":

@@ -283,6 +283,10 @@ function validateHealthBody(body, opts) {
 
 async function validateStatusEndpoint(baseUrl, kind, lookup) {
   if (!lookup) return;
+  const keyMatch = lookup.match(/^key:([^:]+):([^:]+)$/);
+  const claimMatch = lookup.match(/^claim:(sha256:[A-Za-z0-9_-]+)$/);
+  if (kind === "key" && !keyMatch) throw new Error("--status-key-lookup must be key:<domain>:<kid>");
+  if (kind === "claim" && !claimMatch) throw new Error("--status-claim-lookup must be claim:<sha256:...>");
   const url = endpoint(baseUrl, `/groundlock/status/${kind}`);
   url.searchParams.set("lookup", lookup);
   const { response, text } = await fetchText(url);
@@ -294,6 +298,15 @@ async function validateStatusEndpoint(baseUrl, kind, lookup) {
   const body = JSON.parse(text);
   if (body?.version !== "groundlock-status/v1" || body?.kind !== kind || body?.status !== "active") {
     throw new Error(`${url.pathname} did not return an active ${kind} status record`);
+  }
+  if (kind === "key") {
+    const [, signerDomain, kid] = keyMatch;
+    if (body?.subject?.signerDomain !== signerDomain || body?.subject?.kid !== kid) {
+      throw new Error(`${url.pathname} subject does not match ${lookup}`);
+    }
+  }
+  if (kind === "claim" && body?.subject?.receiptHash !== claimMatch[1]) {
+    throw new Error(`${url.pathname} subject does not match ${lookup}`);
   }
 }
 

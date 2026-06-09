@@ -75,19 +75,26 @@ def live_health(*, status_records_configured: bool = True) -> dict[str, object]:
     }
 
 
-def status_record(kind: str) -> dict[str, object]:
+def status_record(kind: str, *, mismatch_subject: bool = False) -> dict[str, object]:
     if kind == "key":
         return {
             "version": "groundlock-status/v1",
             "kind": "key",
-            "subject": {"signerDomain": "publisher.example", "kid": "k1"},
+            "subject": {
+                "signerDomain": (
+                    "other.groundlock.dev" if mismatch_subject else "publisher.example"
+                ),
+                "kid": "k1",
+            },
             "status": "active",
             "issuedAt": "2026-06-08T00:00:00.000Z",
         }
     return {
         "version": "groundlock-status/v1",
         "kind": "claim",
-        "subject": {"receiptHash": "sha256:abc123"},
+        "subject": {
+            "receiptHash": "sha256:other" if mismatch_subject else "sha256:abc123"
+        },
         "status": "active",
         "issuedAt": "2026-06-08T00:00:00.000Z",
     }
@@ -100,6 +107,7 @@ class SmokeFixture:
         homepage_origin: str = "https://receipts.groundlock.dev",
         discovery_origin: str | None = None,
         discovery_exposes_api: bool = False,
+        status_subject_mismatch: bool = False,
         status_records_configured: bool = True,
         verify_state: str = "PASS",
         verify_no_store: bool = True,
@@ -107,6 +115,7 @@ class SmokeFixture:
         self.homepage_origin = homepage_origin
         self.discovery_origin = discovery_origin or homepage_origin
         self.discovery_exposes_api = discovery_exposes_api
+        self.status_subject_mismatch = status_subject_mismatch
         self.status_records_configured = status_records_configured
         self.verify_state = verify_state
         self.verify_no_store = verify_no_store
@@ -197,7 +206,12 @@ class SmokeHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        self.send_json(status_record(kind), no_store=True)
+        self.send_json(
+            status_record(
+                kind, mismatch_subject=self.server.fixture.status_subject_mismatch
+            ),
+            no_store=True,
+        )
 
     def send_text(self, body: str) -> None:
         self.send_response(200)
@@ -292,6 +306,12 @@ class WebResponseSmokeTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("statusRecordsConfigured", result.stderr)
+
+    def test_smoke_rejects_status_record_subject_mismatch(self) -> None:
+        result = self.run_smoke(SmokeFixture(status_subject_mismatch=True))
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("subject does not match key:publisher.example:k1", result.stderr)
 
     def test_smoke_accepts_verify_pass_response(self) -> None:
         fixture = SmokeFixture()
