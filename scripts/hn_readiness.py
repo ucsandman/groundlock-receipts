@@ -758,6 +758,16 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
     if isinstance(fixture_txt_records, str):
         failures.append(fixture_txt_records)
         fixture_txt_records = None
+    else:
+        summary_dns_txt_count = summary.get("dnsTxtRecordCount")
+        if not isinstance(summary_dns_txt_count, int) or isinstance(
+            summary_dns_txt_count, bool
+        ):
+            failures.append("launch summary dnsTxtRecordCount is missing")
+        elif summary_dns_txt_count != len(fixture_txt_records):
+            failures.append(
+                "launch summary dnsTxtRecordCount does not match DNS fixture"
+            )
 
     artifacts = summary.get("artifacts")
     if not isinstance(artifacts, dict):
