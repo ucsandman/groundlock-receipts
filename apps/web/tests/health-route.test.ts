@@ -91,6 +91,27 @@ describe("health route", () => {
     expect(JSON.stringify(body)).not.toContain("publisher.example");
   });
 
+  it("fails live mode health when the public site URL is missing", async () => {
+    process.env.GROUNDLOCK_SIGNER_DOMAIN = "publisher.example";
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    process.env.GROUNDLOCK_DOH_ENDPOINT = "https://resolver.example/dns-query";
+    process.env.GROUNDLOCK_STATUS_BASE_URL = "https://publisher.example/groundlock/status";
+
+    const route = await import("../app/api/health/route");
+    const response = await route.GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(body).toEqual(expect.objectContaining({
+      service: "groundlock-web",
+      ok: false,
+      mode: "live",
+      code: "missing_site_url",
+    }));
+    expect(JSON.stringify(body)).not.toContain("resolver.example");
+  });
+
   it.each([
     ["site URL", "NEXT_PUBLIC_SITE_URL", "not-url", "invalid_site_url"],
     ["site URL", "NEXT_PUBLIC_SITE_URL", "https://user:pass@receipts.groundlock.dev", "invalid_site_url"],

@@ -3,7 +3,7 @@
 GroundLock has two web verifier modes:
 
 - Demo mode: no environment variables. The app verifies built-in DNS-cache fixtures for local testing.
-- Production verifier mode: `GROUNDLOCK_SIGNER_DOMAIN` is set. The app reconstructs receipts through DNS-over-HTTPS TXT lookups and checks key/claim status through HTTPS JSON endpoints.
+- Production verifier mode: `GROUNDLOCK_SIGNER_DOMAIN` is set with `NEXT_PUBLIC_SITE_URL`, an explicit DNS-over-HTTPS resolver, and key/claim status HTTPS endpoints. The app reconstructs receipts through DNS-over-HTTPS TXT lookups and checks key/claim status through HTTPS JSON endpoints.
 
 The public verifier must not hold receipt-signing private keys.
 
@@ -25,7 +25,7 @@ Demo mode does not use live DoH. When `GROUNDLOCK_SIGNER_DOMAIN` is set, `GROUND
 
 The verifier initializes demo signing material only for demo-mode fixture verification. When `GROUNDLOCK_SIGNER_DOMAIN` enables live verifier mode, `/api/verify` uses the configured DNS/status paths without generating demo signing keys or issuing new receipts.
 
-`NEXT_PUBLIC_SITE_URL` should be the public HTTPS origin for the deployed verifier. It is used for canonical metadata, Open Graph images, `robots.txt`, and `sitemap.xml`. Set it before building static metadata; `robots.txt` and `sitemap.xml` also read it at runtime. If set in live mode, `/api/health` requires it to be a valid HTTPS URL.
+`NEXT_PUBLIC_SITE_URL` is required in live verifier mode and should be the public HTTPS origin for the deployed verifier. It is used for canonical metadata, Open Graph images, `robots.txt`, and `sitemap.xml`. Set it before building static metadata; `robots.txt` and `sitemap.xml` also read it at runtime. In live mode, `/api/health` returns `503` with `missing_site_url` when it is absent and `invalid_site_url` when it is malformed.
 
 `GROUNDLOCK_STATUS_BASE_URL` is required when `GROUNDLOCK_SIGNER_DOMAIN` is set.
 The status base URL must be a valid publisher-controlled HTTPS URL. It is used only for public key and claim status; it is not a signing service and not a timestamp authority.
@@ -59,7 +59,7 @@ The image runs `apps/web` with Next standalone output, listens on `PORT` or `300
 
 The web app sets browser hardening headers for all routes: `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Strict-Transport-Security`, `Cross-Origin-Opener-Policy`, `X-DNS-Prefetch-Control`, `X-Permitted-Cross-Domain-Policies`, and `Permissions-Policy`. The production header contract lives in `apps/web/lib/security-header-contract.json`.
 CI runs `node scripts/smoke_web_response.mjs <base-url> --verify-file-text <demo-pass-text>` against the built Docker image to prove `/`, `/api/health`, and `POST /api/verify` return through the standalone runtime, production security headers from that contract are present, health and verify responses use `Cache-Control: no-store`, and the demo verifier returns a PASS receipt summary.
-CI also starts the same image in live verifier mode with `GROUNDLOCK_SIGNER_DOMAIN`, `NEXT_PUBLIC_SITE_URL`, `GROUNDLOCK_DOH_ENDPOINT`, `GROUNDLOCK_STATUS_BASE_URL`, and bundled `GROUNDLOCK_STATUS_RECORDS_JSON`. That live smoke requires `/api/health` to report live mode, public canonical/share metadata to use the configured HTTPS origin, and the bundled key/claim status endpoints to return active no-store records.
+CI also starts the same image in live verifier mode with `GROUNDLOCK_SIGNER_DOMAIN`, `NEXT_PUBLIC_SITE_URL`, `GROUNDLOCK_DOH_ENDPOINT`, `GROUNDLOCK_STATUS_BASE_URL`, explicit fetch/rate-limit defaults, and bundled `GROUNDLOCK_STATUS_RECORDS_JSON`. That live smoke requires `/api/health` to report live mode, public canonical/share metadata to use the configured HTTPS origin, and the bundled key/claim status endpoints to return active no-store records.
 
 ## Publisher key bootstrap
 
@@ -98,7 +98,7 @@ The launch kit is a public deployment bundle. It writes:
 
 Use `GET /api/health` for deployment readiness and uptime monitors. It returns booleans for whether live verifier environment variables are configured, but never returns configured domain, resolver, status URL, status records, or secrets.
 
-In demo mode it returns `200`. In live mode it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is set without the required `GROUNDLOCK_STATUS_BASE_URL` or `GROUNDLOCK_DOH_ENDPOINT`, or when the configured site, DoH, or status URLs are malformed or not HTTPS.
+In demo mode it returns `200`. In live mode it returns `503` when `GROUNDLOCK_SIGNER_DOMAIN` is set without the required `NEXT_PUBLIC_SITE_URL`, `GROUNDLOCK_STATUS_BASE_URL`, or `GROUNDLOCK_DOH_ENDPOINT`, or when the configured site, DoH, or status URLs are malformed or not HTTPS.
 
 If `GROUNDLOCK_STATUS_BASE_URL` points at the same origin as `NEXT_PUBLIC_SITE_URL`, health also requires `GROUNDLOCK_STATUS_RECORDS_JSON` to parse, contain only valid status records, include at least one active key record whose subject matches `GROUNDLOCK_SIGNER_DOMAIN`, and include at least one active `sha256:` claim record; that means the deployment is using the bundled `/groundlock/status/key` and `/groundlock/status/claim` routes. Externally managed status endpoints are allowed without bundled status JSON, but `groundlock check-live` must still pass before launch.
 
@@ -174,7 +174,7 @@ Generate the full web env block from a local publish fixture:
 groundlock export-web-env .\published\dns-fixture.json --status-base-url https://publisher.example/groundlock/status --site-url https://receipts.example.com --doh-endpoint https://cloudflare-dns.com/dns-query
 ```
 
-`--doh-endpoint` is required because the generated block enables live verifier mode, and live mode fails closed without an explicit resolver URL. `--site-url` is optional for local demos, but required for a public launch because the readiness audit expects the deployed verifier to report `siteUrlConfigured` and render canonical/share metadata for the public origin. If a path is provided, the CLI writes only the origin.
+`--doh-endpoint` is required because the generated block enables live verifier mode, and live mode fails closed without an explicit resolver URL. Set `--site-url` for any live verifier deployment; `/api/health` fails closed without `NEXT_PUBLIC_SITE_URL`, and the readiness audit expects the deployed verifier to report `siteUrlConfigured` and render canonical/share metadata for the public origin. If a path is provided, the CLI writes only the origin.
 
 For public launches, prefer `groundlock launch-kit` over hand-running `export-web-env` and `setup-domain`, then copy the generated `web.env` values into the hosting provider and the generated `dns-zone.txt` records into the DNS provider.
 
@@ -226,7 +226,7 @@ The audit exits non-zero if:
 - the local `dns-fixture.json` is missing, malformed, for a different domain, for a different demo hash, lacks identity, manifest, declared chunk, key status, or claim status entries, has malformed or ambiguous identity/manifest/chunk TXT records, has chunk payload that does not match manifest `ph`, has cached receipt JSON that is malformed or does not match the manifest/demo hash, has malformed status records, has a manifest signer domain that does not match the launch domain, has an identity `kid` that does not match the manifest key, or has status records that do not match the manifest key/receipt hash
 - `--launch-kit` is provided and the launch kit is missing, has mismatched summary fields, has summary receipt metadata, TXT count, or status count that does not match the DNS fixture, has missing or invalid summary fetch timeout or rate-limit defaults, has `dns-zone.txt` TXT records that do not match the DNS fixture, has `web.env` values that do not match the readiness inputs, has invalid `web.env` fetch timeout or rate-limit values, has `web.env` fetch timeout or rate-limit values that differ from `launch-summary.json`, has bundled status records that do not match the DNS fixture, has `status-records.json` entries that do not match the DNS fixture status records, has `hn-readiness.ps1` or `runbook.md` arguments that do not match the readiness inputs, has artifact hashes that do not match the files, has a checksum manifest that does not match `launch-summary.json`, has a copied fixture that differs from `--dns-fixture`, or contains private-key markers or raw private JWK material in public launch-kit artifacts
 - the latest GitHub Actions `CI` run on `main` is not successful for the current git `HEAD`
-- the deployed `/api/health` response is missing, not `ok`, still in demo mode, missing signer domain, site URL, DoH endpoint, or status base URL configuration, has invalid fetch timeout or rate-limit configuration, or is missing bundled status records when the status base URL shares the verifier origin
+- the deployed `/api/health` response is missing, not `ok`, still in demo mode, missing signer domain, site URL, DoH endpoint, or status base URL configuration, has invalid site URL, fetch timeout, or rate-limit configuration, or is missing bundled status records when the status base URL shares the verifier origin
 - the deployed homepage title, canonical URL, Open Graph URL, or share image metadata still points at localhost, a placeholder, or a different launch origin
 - the deployed homepage or health response is missing production security headers, the health response is missing `Cache-Control: no-store`, or a development CSP allowance such as `localhost` or `unsafe-eval` is present
 - `groundlock warm-cache` does not return `PASS` for the public demo fixture

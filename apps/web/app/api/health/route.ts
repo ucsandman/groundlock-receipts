@@ -47,6 +47,19 @@ export function GET() {
     );
   }
 
+  if (mode === "live" && !checks.siteUrlConfigured) {
+    return jsonNoStore(
+      {
+        service: "groundlock-web",
+        ok: false,
+        mode,
+        code: "missing_site_url",
+        checks,
+      },
+      { status: 503 },
+    );
+  }
+
   if (mode === "live" && checks.siteUrlConfigured && !isConfiguredHttpsUrl(process.env.NEXT_PUBLIC_SITE_URL)) {
     return liveConfigError("invalid_site_url", checks);
   }

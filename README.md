@@ -144,7 +144,7 @@ groundlock sign .\notice.txt --source .\source.json --domain publisher.example -
 
 The local web verifier does not require environment variables or secrets. It reconstructs and verifies demo DNS-cache receipt fixtures; it does not issue receipts. Demo signing material is initialized only when demo mode is actually used; live verifier mode validates public DNS/status paths without generating demo signing keys.
 
-Production verifier mode is enabled by `GROUNDLOCK_SIGNER_DOMAIN`, with `GROUNDLOCK_DOH_ENDPOINT` and `GROUNDLOCK_STATUS_BASE_URL` set for public launch.
+Production verifier mode is enabled by `GROUNDLOCK_SIGNER_DOMAIN`, with `NEXT_PUBLIC_SITE_URL`, `GROUNDLOCK_DOH_ENDPOINT`, and `GROUNDLOCK_STATUS_BASE_URL` set for public launch.
 Live DoH and status fetches default to a `5000` ms timeout per external request and can be tuned with `GROUNDLOCK_FETCH_TIMEOUT_MS` from `1` through `30000`.
 Public verifier rate limits default to `240` requests per `60000` ms per app instance and can be tuned with positive safe integer `GROUNDLOCK_RATE_LIMIT_MAX` and `GROUNDLOCK_RATE_LIMIT_WINDOW_MS` values. Invalid configured values fail live health checks and make `/api/verify` fail closed.
 Use `.env.example` for placeholder names and deployment shape; never commit real `.env` files.
