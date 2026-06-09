@@ -18,7 +18,7 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlencode, urlparse, urlunparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -504,6 +504,113 @@ def check_security_headers(url: str, timeout: float = 10.0) -> CheckResult:
         "security-headers",
         True,
         "deployed homepage and health security headers are production-ready",
+    )
+
+
+def status_endpoint_url(status_base_url: str, kind: str, lookup: str) -> str:
+    clean = status_base_url.strip().rstrip("/")
+    return f"{clean}/{kind}?{urlencode({'lookup': lookup})}"
+
+
+def status_endpoint_expectations(
+    fixture_status_records: list[dict[str, object]],
+) -> tuple[list[tuple[str, str, dict[str, object]]], list[str]]:
+    expectations: dict[str, tuple[str, str, dict[str, object]]] = {}
+    failures: list[str] = []
+    for record in fixture_status_records:
+        if not isinstance(record, dict):
+            failures.append("DNS fixture status record is not a JSON object")
+            continue
+        kind = record.get("kind")
+        if kind not in {"key", "claim"}:
+            failures.append(f"DNS fixture status record has unsupported kind {kind!r}")
+            continue
+        if kind in expectations:
+            failures.append(f"DNS fixture has multiple {kind} status records")
+            continue
+        subject = record.get("subject")
+        if not isinstance(subject, dict):
+            failures.append(f"DNS fixture {kind} status record subject is missing")
+            continue
+        if kind == "key":
+            signer_domain = subject.get("signerDomain")
+            kid = subject.get("kid")
+            if not isinstance(signer_domain, str) or not isinstance(kid, str):
+                failures.append(
+                    "DNS fixture key status record subject is missing signerDomain or kid"
+                )
+                continue
+            lookup = f"key:{signer_domain}:{kid}"
+        else:
+            receipt_hash = subject.get("receiptHash")
+            if not isinstance(receipt_hash, str):
+                failures.append(
+                    "DNS fixture claim status record subject is missing receiptHash"
+                )
+                continue
+            lookup = f"claim:{receipt_hash}"
+        expectations[kind] = (kind, lookup, record)
+
+    for kind in ("key", "claim"):
+        if kind not in expectations:
+            failures.append(f"DNS fixture is missing a {kind} status record")
+
+    ordered = [expectations[kind] for kind in ("key", "claim") if kind in expectations]
+    return ordered, failures
+
+
+def check_status_endpoints(
+    status_base_url: str,
+    fixture_status_records: list[dict[str, object]],
+    timeout: float = 10.0,
+) -> CheckResult:
+    expectations, failures = status_endpoint_expectations(fixture_status_records)
+
+    for kind, lookup, expected_record in expectations:
+        endpoint = status_endpoint_url(status_base_url, kind, lookup)
+        request = urllib.request.Request(
+            endpoint,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "groundlock-hn-readiness/1",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                body = response.read(256_000).decode("utf-8", errors="replace")
+                if response.status != 200:
+                    failures.append(
+                        f"{kind} status endpoint returned HTTP {response.status}"
+                    )
+                    continue
+                cache_control = header_value(response.headers, "Cache-Control") or ""
+                if "no-store" not in cache_control.lower():
+                    failures.append(
+                        f"{kind} status endpoint missing Cache-Control: no-store"
+                    )
+        except Exception as exc:
+            failures.append(f"{endpoint} failed: {exc}")
+            continue
+
+        try:
+            body_json = json.loads(body)
+        except json.JSONDecodeError as exc:
+            failures.append(f"{kind} status endpoint returned invalid JSON: {exc}")
+            continue
+        if not isinstance(body_json, dict):
+            failures.append(f"{kind} status endpoint response is not a JSON object")
+            continue
+        if canonical_json(body_json) != canonical_json(expected_record):
+            failures.append(
+                f"{kind} status endpoint response does not match DNS fixture"
+            )
+
+    if failures:
+        return CheckResult("status-endpoints", False, "; ".join(failures))
+    return CheckResult(
+        "status-endpoints",
+        True,
+        "key and claim status endpoints match DNS fixture and use no-store",
     )
 
 
@@ -2197,6 +2304,12 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
                 f"could not read DNS fixture receipt after preflight: {exc}",
             ),
         ]
+    fixture_status_records = fixture_status_records_for_launch_kit(args.dns_fixture)
+    if isinstance(fixture_status_records, str):
+        return [
+            *preflight,
+            CheckResult("status-endpoints", False, fixture_status_records),
+        ]
 
     return [
         *preflight,
@@ -2204,6 +2317,7 @@ def run_checks(args: argparse.Namespace) -> list[CheckResult]:
         check_health_url(args.health_url, args.status_base_url),
         check_homepage_metadata(args.health_url),
         check_security_headers(args.health_url),
+        check_status_endpoints(args.status_base_url, fixture_status_records),
         check_warm_cache(args.dns_fixture, args.doh_endpoint),
         check_live_receipt(
             args.file_or_hash, args.domain, args.status_base_url, args.doh_endpoint

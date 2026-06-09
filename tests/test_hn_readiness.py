@@ -183,6 +183,30 @@ def production_security_headers(
     return headers
 
 
+class FakeHttpResponse:
+    def __init__(
+        self,
+        body: str,
+        *,
+        status: int = 200,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        self.body = body.encode("utf-8")
+        self.status = status
+        self.headers = headers or {}
+
+    def __enter__(self) -> "FakeHttpResponse":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            return self.body
+        return self.body[:size]
+
+
 def zone_txt_line(name: str, value: str, ttl: int = 300) -> str:
     segments = [
         value[offset : offset + 255] for offset in range(0, len(value), 255)
@@ -689,6 +713,75 @@ class HnReadinessTests(unittest.TestCase):
 
         self.assertEqual(ok, [])
         self.assertIn("Cache-Control: no-store", "; ".join(missing))
+
+    def test_status_endpoint_check_matches_dns_fixture_and_no_store(self) -> None:
+        status = active_status_records(receipt_hash="sha256:receipt")
+        records = [status["key"], status["claim"]]
+        by_kind = {record["kind"]: record for record in records}
+        requested_urls: list[str] = []
+
+        def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
+            self.assertEqual(timeout, 10.0)
+            url = str(getattr(request, "full_url"))
+            requested_urls.append(url)
+            kind = "key" if "/key?" in url else "claim"
+            return FakeHttpResponse(
+                json.dumps(by_kind[kind]),
+                headers={"Cache-Control": "max-age=0, no-store"},
+            )
+
+        with mock.patch.object(
+            hn_readiness.urllib.request, "urlopen", side_effect=fake_urlopen
+        ):
+            result = hn_readiness.check_status_endpoints(
+                "https://receipts.groundlock.dev/groundlock/status/", records
+            )
+
+        self.assertTrue(result.ok)
+        self.assertIn("lookup=key%3Areceipts.groundlock.dev%3Ak1", requested_urls[0])
+        self.assertIn("lookup=claim%3Asha256%3Areceipt", requested_urls[1])
+
+    def test_status_endpoint_check_requires_no_store(self) -> None:
+        status = active_status_records(receipt_hash="sha256:receipt")
+        records = [status["key"], status["claim"]]
+
+        def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
+            url = str(getattr(request, "full_url"))
+            kind = "key" if "/key?" in url else "claim"
+            return FakeHttpResponse(json.dumps(status[kind]))
+
+        with mock.patch.object(
+            hn_readiness.urllib.request, "urlopen", side_effect=fake_urlopen
+        ):
+            result = hn_readiness.check_status_endpoints(
+                "https://receipts.groundlock.dev/groundlock/status", records
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("Cache-Control: no-store", result.detail)
+
+    def test_status_endpoint_check_requires_dns_fixture_json_match(self) -> None:
+        status = active_status_records(receipt_hash="sha256:receipt")
+        records = [status["key"], status["claim"]]
+        changed_claim = dict(status["claim"])
+        changed_claim["status"] = "revoked"
+
+        def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
+            url = str(getattr(request, "full_url"))
+            body = status["key"] if "/key?" in url else changed_claim
+            return FakeHttpResponse(
+                json.dumps(body), headers={"Cache-Control": "no-store"}
+            )
+
+        with mock.patch.object(
+            hn_readiness.urllib.request, "urlopen", side_effect=fake_urlopen
+        ):
+            result = hn_readiness.check_status_endpoints(
+                "https://receipts.groundlock.dev/groundlock/status", records
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("claim status endpoint response does not match", result.detail)
 
     def test_homepage_url_strips_health_endpoint(self) -> None:
         self.assertEqual(
@@ -2418,6 +2511,7 @@ class HnReadinessTests(unittest.TestCase):
 
         ok = hn_readiness.CheckResult("mock", True, "ok")
         web_verify = hn_readiness.CheckResult("web-verify", True, "ok")
+        status_endpoints = hn_readiness.CheckResult("status-endpoints", True, "ok")
         fixture_manifest = hn_readiness.FixtureManifest(
             receipt_hash="sha256:receipt",
             payload_hash="sha256:payload",
@@ -2425,6 +2519,8 @@ class HnReadinessTests(unittest.TestCase):
             kid="k1",
             chunk_count=1,
         )
+        status = active_status_records(receipt_hash="sha256:receipt")
+        fixture_status_records = [status["key"], status["claim"]]
         with (
             mock.patch.object(hn_readiness, "check_git_clean", return_value=ok),
             mock.patch.object(hn_readiness, "check_show_hn_draft", return_value=ok),
@@ -2435,12 +2531,20 @@ class HnReadinessTests(unittest.TestCase):
                 "fixture_manifest_for_input",
                 return_value=fixture_manifest,
             ),
+            mock.patch.object(
+                hn_readiness,
+                "fixture_status_records_for_launch_kit",
+                return_value=fixture_status_records,
+            ),
             mock.patch.object(hn_readiness, "check_ci", return_value=ok),
             mock.patch.object(hn_readiness, "check_health_url", return_value=ok),
             mock.patch.object(hn_readiness, "check_homepage_metadata", return_value=ok),
             mock.patch.object(
                 hn_readiness, "check_security_headers", return_value=ok
             ) as check_security_headers,
+            mock.patch.object(
+                hn_readiness, "check_status_endpoints", return_value=status_endpoints
+            ) as check_status_endpoints,
             mock.patch.object(hn_readiness, "check_warm_cache", return_value=ok),
             mock.patch.object(hn_readiness, "check_live_receipt", return_value=ok),
             mock.patch.object(
@@ -2453,6 +2557,10 @@ class HnReadinessTests(unittest.TestCase):
         self.assertEqual(results[-1].name, "web-verify")
         check_security_headers.assert_called_once_with(
             "https://receipts.groundlock.dev"
+        )
+        check_status_endpoints.assert_called_once_with(
+            "https://receipts.groundlock.dev/groundlock/status",
+            fixture_status_records,
         )
         check_web_verify.assert_called_once_with(
             "https://receipts.groundlock.dev",
