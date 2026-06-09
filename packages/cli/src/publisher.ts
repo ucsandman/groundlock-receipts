@@ -293,9 +293,10 @@ export async function verifyWithFixture(opts: {
 export async function verifyLive(opts: VerifyLiveOptions): Promise<TrueNameVerifyResult> {
   const dohEndpoint = requireHttpsUrl(opts.dohEndpoint, "missing_doh_endpoint", "invalid_doh_endpoint");
   const statusBaseUrl = requireHttpsUrl(opts.statusBaseUrl, "missing_status_base_url", "invalid_status_base_url");
+  const signerDomain = requireLaunchDomain(opts.domain, "missing_signer_domain", "invalid_signer_domain");
   const contentHash = opts.input.startsWith("sha256:") ? opts.input : digestText(await readTextCapped(opts.input));
   const fetcher = fetchJson;
-  return verifyTrueName(contentHash, opts.domain, {
+  return verifyTrueName(contentHash, signerDomain, {
     ...createDohTxtResolver(fetcher, dohEndpoint),
     statusResolver: createHttpStatusResolver(fetcher, statusBaseUrl),
   });
@@ -305,9 +306,10 @@ export async function exportWebEnv(opts: ExportWebEnvOptions): Promise<string> {
   const dohEndpoint = requireHttpsUrl(opts.dohEndpoint, "missing_doh_endpoint", "invalid_doh_endpoint");
   const statusBaseUrl = requireHttpsUrl(opts.statusBaseUrl, "missing_status_base_url", "invalid_status_base_url");
   const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
+  const signerDomain = requireLaunchDomain(fixture.domain, "missing_signer_domain", "invalid_signer_domain");
   const records = [fixture.status.key, fixture.status.claim];
   const lines = [
-    `GROUNDLOCK_SIGNER_DOMAIN=${fixture.domain}`,
+    `GROUNDLOCK_SIGNER_DOMAIN=${signerDomain}`,
     ...(opts.siteUrl ? [`NEXT_PUBLIC_SITE_URL=${normalizeUrlOrigin(opts.siteUrl)}`] : []),
     `GROUNDLOCK_DOH_ENDPOINT=${dohEndpoint}`,
     `GROUNDLOCK_STATUS_BASE_URL=${statusBaseUrl}`,
@@ -322,6 +324,7 @@ export async function exportWebEnv(opts: ExportWebEnvOptions): Promise<string> {
 export async function warmDnsCache(opts: WarmDnsCacheOptions): Promise<WarmDnsCacheResult> {
   const dohEndpoint = requireHttpsUrl(opts.dohEndpoint, "missing_doh_endpoint", "invalid_doh_endpoint");
   const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
+  requireLaunchDomain(fixture.domain, "missing_signer_domain", "invalid_signer_domain");
   const resolver = createDohTxtResolver(fetchJson, dohEndpoint);
   const failures: WarmDnsCacheResult["failures"] = [];
   const names = Object.keys(fixture.txt).sort();
@@ -355,6 +358,7 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
   const dohEndpoint = requireHttpsUrl(opts.dohEndpoint, "missing_doh_endpoint", "invalid_doh_endpoint");
   const ttl = optionalTtl(opts.ttl);
   const fixture = validateFixture(await readJsonFileCapped(opts.fixturePath));
+  const signerDomain = requireLaunchDomain(fixture.domain, "missing_signer_domain", "invalid_signer_domain");
   const launch = await launchFixtureReceipt(fixture, opts.fileOrHash);
 
   if (launch.receipt.verdict !== "pass") {
@@ -391,7 +395,7 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
       healthUrl: siteUrl,
       statusBaseUrl,
       dohEndpoint,
-      domain: fixture.domain,
+      domain: signerDomain,
       fileOrHash: opts.fileOrHash,
       repo: opts.repo ?? "ucsandman/groundlock-receipts",
       branch: opts.branch ?? "main",
@@ -405,7 +409,7 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
       siteUrl,
       statusBaseUrl,
       dohEndpoint,
-      domain: fixture.domain,
+      domain: signerDomain,
       fileOrHash: opts.fileOrHash,
       ttl,
       repo: opts.repo ?? "ucsandman/groundlock-receipts",
@@ -425,7 +429,7 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
       {
         schema: "groundlock-launch-kit/v1",
         generatedAt: new Date().toISOString(),
-        domain: fixture.domain,
+        domain: signerDomain,
         siteUrl,
         healthUrl: siteUrl,
         statusBaseUrl,
@@ -694,6 +698,15 @@ function requireHttpsUrl(value: string | undefined, missingError: string, invali
   } catch {
     throw new Error(invalidError);
   }
+}
+
+function requireLaunchDomain(value: string | undefined, missingError: string, invalidError: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(missingError);
+  }
+  const domain = normalizeDomain(value);
+  if (!isDnsHostname(domain)) throw new Error(invalidError);
+  return domain;
 }
 
 function isLaunchHttpsUrl(url: URL): boolean {

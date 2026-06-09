@@ -53,7 +53,7 @@ describe("publisher SDK", () => {
     const signed = await signFile({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       outPath,
@@ -64,7 +64,7 @@ describe("publisher SDK", () => {
     const blocked = await signFile({
       filePath: blockedPath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       outPath: blockedOutPath,
@@ -80,7 +80,7 @@ describe("publisher SDK", () => {
     const published = await localPublish({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       publicKeyJwk: key.publicKeyJwk,
@@ -90,7 +90,7 @@ describe("publisher SDK", () => {
     expect(published.receiptPath).toContain("receipts");
     expect(published.statusPath).toContain("status");
     expect(published.fixturePath).toContain("dns-fixture.json");
-    await expect(verifyWithFixture({ input: filePath, fixturePath: published.fixturePath, domain: "publisher.example" })).resolves.toEqual(
+    await expect(verifyWithFixture({ input: filePath, fixturePath: published.fixturePath, domain: "publisher.groundlock.dev" })).resolves.toEqual(
       expect.objectContaining({ state: "PASS" }),
     );
 
@@ -98,7 +98,7 @@ describe("publisher SDK", () => {
     fixture.status.claim.status = "revoked";
     fixture.status.claim.reason = "test revocation";
     await writeFile(published.fixturePath, JSON.stringify(fixture, null, 2), "utf8");
-    await expect(verifyWithFixture({ input: filePath, fixturePath: published.fixturePath, domain: "publisher.example" })).resolves.toEqual(
+    await expect(verifyWithFixture({ input: filePath, fixturePath: published.fixturePath, domain: "publisher.groundlock.dev" })).resolves.toEqual(
       expect.objectContaining({ state: "REVOKED" }),
     );
   });
@@ -110,7 +110,7 @@ describe("publisher SDK", () => {
     const published = await localPublish({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       publicKeyJwk: key.publicKeyJwk,
@@ -124,7 +124,7 @@ describe("publisher SDK", () => {
       siteUrl: "https://receipts.groundlock.dev/share",
     });
 
-    expect(env).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.example");
+    expect(env).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.groundlock.dev");
     expect(env).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
     expect(env).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.groundlock.dev/dns-query");
     expect(env).toContain("GROUNDLOCK_STATUS_BASE_URL=https://publisher.groundlock.dev/groundlock/status");
@@ -145,7 +145,7 @@ describe("publisher SDK", () => {
     const published = await localPublish({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       publicKeyJwk: key.publicKeyJwk,
@@ -173,7 +173,7 @@ describe("publisher SDK", () => {
 
     expect(kit.contentHash).toBe(summary.contentHash);
     expect(kit.receiptHash).toBe(summary.receiptHash);
-    expect(zone).toContain('_truename.publisher.example. 600 IN TXT "');
+    expect(zone).toContain('_truename.publisher.groundlock.dev. 600 IN TXT "');
     expect(webEnv).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
     expect(webEnv).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.groundlock.dev/dns-query");
     expect(webEnv).toContain("GROUNDLOCK_FETCH_TIMEOUT_MS=5000");
@@ -226,7 +226,7 @@ describe("publisher SDK", () => {
     const published = await localPublish({
       filePath: blockedPath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       publicKeyJwk: key.publicKeyJwk,
@@ -250,14 +250,14 @@ describe("publisher SDK", () => {
     const published = await localPublish({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       publicKeyJwk: key.publicKeyJwk,
       outDir: publishDir,
     });
     const fixture = JSON.parse(await readFile(published.fixturePath, "utf8")) as { txt: Record<string, string[]> };
-    fixture.txt["_truename.publisher.example"] = [fixture.txt["_truename.publisher.example"]![0]!.replace("kid=k1", "kid=other")];
+    fixture.txt["_truename.publisher.groundlock.dev"] = [fixture.txt["_truename.publisher.groundlock.dev"]![0]!.replace("kid=k1", "kid=other")];
     await writeFile(published.fixturePath, JSON.stringify(fixture), "utf8");
 
     await expect(createLaunchKit({
@@ -270,6 +270,29 @@ describe("publisher SDK", () => {
     })).rejects.toThrow("launch_identity_key_mismatch");
   });
 
+  it("refuses launch kits from placeholder signer domain fixtures", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: path.join(dir, "publish"),
+    });
+
+    await expect(createLaunchKit({
+      fixturePath: published.fixturePath,
+      outDir: path.join(dir, "launch-kit"),
+      siteUrl: "https://receipts.groundlock.dev",
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+      fileOrHash: filePath,
+    })).rejects.toThrow("invalid_signer_domain");
+  });
+
   it("refuses to export a live web env block without an explicit DoH endpoint", async () => {
     const { dir, sourcePath, filePath } = await fixtureDir();
     const key = generateSigningKey("k1");
@@ -277,7 +300,7 @@ describe("publisher SDK", () => {
     const published = await localPublish({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       publicKeyJwk: key.publicKeyJwk,
@@ -313,7 +336,7 @@ describe("publisher SDK", () => {
     const published = await localPublish({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       publicKeyJwk: key.publicKeyJwk,
@@ -329,6 +352,27 @@ describe("publisher SDK", () => {
     })).rejects.toThrow(error);
   });
 
+  it("refuses to export a live web env block from a placeholder signer domain fixture", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: path.join(dir, "publish"),
+    });
+
+    await expect(exportWebEnv({
+      fixturePath: published.fixturePath,
+      statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+      siteUrl: "https://receipts.groundlock.dev/share",
+    })).rejects.toThrow("invalid_signer_domain");
+  });
+
   it("warms and validates all DNS cache fixture TXT records through DoH", async () => {
     const { dir, sourcePath, filePath } = await fixtureDir();
     const key = generateSigningKey("k1");
@@ -336,7 +380,7 @@ describe("publisher SDK", () => {
     const published = await localPublish({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       publicKeyJwk: key.publicKeyJwk,
@@ -371,7 +415,7 @@ describe("publisher SDK", () => {
     const published = await localPublish({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       publicKeyJwk: key.publicKeyJwk,
@@ -389,7 +433,7 @@ describe("publisher SDK", () => {
     const published = await localPublish({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       publicKeyJwk: key.publicKeyJwk,
@@ -405,10 +449,32 @@ describe("publisher SDK", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("refuses to warm DNS cache for a placeholder signer domain fixture", async () => {
+    const { dir, sourcePath, filePath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const published = await localPublish({
+      filePath,
+      sourcePath,
+      domain: "publisher.example",
+      kid: key.kid,
+      privateKeyJwk: key.privateKeyJwk,
+      publicKeyJwk: key.publicKeyJwk,
+      outDir: path.join(dir, "publish"),
+    });
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(warmDnsCache({
+      fixturePath: published.fixturePath,
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+    })).rejects.toThrow("invalid_signer_domain");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("refuses live verification without an explicit DoH endpoint", async () => {
     const opts = {
       input: "sha256:abc123",
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       statusBaseUrl: "https://publisher.groundlock.dev/groundlock/status",
     } as unknown as Parameters<typeof verifyLive>[0];
 
@@ -430,11 +496,24 @@ describe("publisher SDK", () => {
 
     await expect(verifyLive({
       input: "sha256:abc123",
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       dohEndpoint: "https://resolver.groundlock.dev/dns-query",
       statusBaseUrl: "https://status.groundlock.dev/groundlock",
       ...override,
     })).rejects.toThrow(error);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("refuses live verification for a placeholder signer domain before network calls", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(verifyLive({
+      input: "sha256:abc123",
+      domain: "publisher.example",
+      dohEndpoint: "https://resolver.groundlock.dev/dns-query",
+      statusBaseUrl: "https://status.groundlock.dev/groundlock",
+    })).rejects.toThrow("invalid_signer_domain");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -444,7 +523,7 @@ describe("publisher SDK", () => {
     const signed = await signFile({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       outPath: path.join(dir, "receipt.json"),
@@ -456,10 +535,10 @@ describe("publisher SDK", () => {
     });
 
     expect(records.mutatesDns).toBe(false);
-    expect(records.identity.name).toBe("_truename.publisher.example");
-    expect(records.manifest.name).toContain("._groundlock.publisher.example");
+    expect(records.identity.name).toBe("_truename.publisher.groundlock.dev");
+    expect(records.manifest.name).toContain("._groundlock.publisher.groundlock.dev");
     expect(parseCacheManifestRecord(records.manifest.value)).toEqual(
-      expect.objectContaining({ signerDomain: "publisher.example", kid: "k1", chunkCount: records.chunks.length }),
+      expect.objectContaining({ signerDomain: "publisher.groundlock.dev", kid: "k1", chunkCount: records.chunks.length }),
     );
     expect(records.chunks.length).toBeGreaterThan(1);
     expect(JSON.stringify(records)).not.toContain("https://");
@@ -471,7 +550,7 @@ describe("publisher SDK", () => {
     const signed = await signFile({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       outPath: path.join(dir, "receipt.json"),
@@ -484,8 +563,8 @@ describe("publisher SDK", () => {
 
     const zone = formatDnsZoneRecords(records, 600);
 
-    expect(zone).toContain('_truename.publisher.example. 600 IN TXT "');
-    expect(zone).toContain("._groundlock.publisher.example. 600 IN TXT ");
+    expect(zone).toContain('_truename.publisher.groundlock.dev. 600 IN TXT "');
+    expect(zone).toContain("._groundlock.publisher.groundlock.dev. 600 IN TXT ");
     expect(zone).toContain("c0.");
     expect(zone).not.toContain("privateKeyJwk");
     for (const line of zone.trim().split("\n")) {
@@ -506,12 +585,12 @@ describe("publisher SDK", () => {
     const signed = await signFile({
       filePath,
       sourcePath,
-      domain: "publisher.example",
+      domain: "publisher.groundlock.dev",
       kid: key.kid,
       privateKeyJwk: key.privateKeyJwk,
       outPath: receiptPath,
       c2paSidecarPath: sidecarPath,
-      receiptReference: "https://publisher.example/receipts/notice.json",
+      receiptReference: "https://publisher.groundlock.dev/receipts/notice.json",
     });
 
     const sidecar = JSON.parse(await readFile(sidecarPath, "utf8"));
@@ -522,10 +601,10 @@ describe("publisher SDK", () => {
     expect(sidecar.groundlock).toEqual(
       expect.objectContaining({
         exactContentHash: signed.receipt.candidateHash,
-        signerDomain: "publisher.example",
+        signerDomain: "publisher.groundlock.dev",
         signerKeyId: "k1",
         contentClass: "publisher-file",
-        receiptReference: "https://publisher.example/receipts/notice.json",
+        receiptReference: "https://publisher.groundlock.dev/receipts/notice.json",
       }),
     );
     expect(sidecar.c2paManifestProjection.created_assertions[0].url).toBe(

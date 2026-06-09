@@ -69,7 +69,7 @@ describe("CLI entrypoint", () => {
       "--source",
       sourcePath,
       "--domain",
-      "publisher.example",
+      "publisher.groundlock.dev",
       "--kid",
       key.kid,
       "--key",
@@ -98,7 +98,7 @@ describe("CLI entrypoint", () => {
       "--source",
       sourcePath,
       "--domain",
-      "publisher.example",
+      "publisher.groundlock.dev",
       "--kid",
       key.kid,
       "--key",
@@ -123,7 +123,7 @@ describe("CLI entrypoint", () => {
 
     expect(code).toBe(0);
     const out = stdout.mock.calls.map((call) => String(call[0])).join("");
-    expect(out).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.example");
+    expect(out).toContain("GROUNDLOCK_SIGNER_DOMAIN=publisher.groundlock.dev");
     expect(out).toContain("NEXT_PUBLIC_SITE_URL=https://receipts.groundlock.dev");
     expect(out).toContain("GROUNDLOCK_DOH_ENDPOINT=https://resolver.groundlock.dev/dns-query");
     expect(out).toContain("GROUNDLOCK_FETCH_TIMEOUT_MS=5000");
@@ -142,7 +142,7 @@ describe("CLI entrypoint", () => {
       "--source",
       sourcePath,
       "--domain",
-      "publisher.example",
+      "publisher.groundlock.dev",
       "--kid",
       key.kid,
       "--key",
@@ -180,7 +180,7 @@ describe("CLI entrypoint", () => {
       "--source",
       sourcePath,
       "--domain",
-      "publisher.example",
+      "publisher.groundlock.dev",
       "--kid",
       key.kid,
       "--key",
@@ -220,7 +220,7 @@ describe("CLI entrypoint", () => {
       "--source",
       sourcePath,
       "--domain",
-      "publisher.example",
+      "publisher.groundlock.dev",
       "--kid",
       key.kid,
       "--key",
@@ -260,6 +260,46 @@ describe("CLI entrypoint", () => {
       "--source",
       sourcePath,
       "--domain",
+      "publisher.groundlock.dev",
+      "--kid",
+      key.kid,
+      "--key",
+      JSON.stringify(key.privateKeyJwk),
+      "--public-key",
+      JSON.stringify(key.publicKeyJwk),
+      "--out",
+      outDir,
+    ]);
+    stderr.mockClear();
+
+    const code = await main([
+      "export-web-env",
+      path.join(outDir, "dns-fixture.json"),
+      "--status-base-url",
+      "https://publisher.groundlock.dev/groundlock/status",
+      "--site-url",
+      "https://receipts.example.com/path",
+      "--doh-endpoint",
+      "https://resolver.example/dns-query",
+    ]);
+
+    expect(code).toBe(1);
+    const err = stderr.mock.calls.map((call) => String(call[0])).join("");
+    expect(err).toContain("invalid_doh_endpoint");
+  });
+
+  it("fails export-web-env when the DNS fixture uses a placeholder signer domain", async () => {
+    const { dir, sourcePath, blockedPath } = await fixtureDir();
+    const key = generateSigningKey("k1");
+    const outDir = path.join(dir, "publish");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await main([
+      "local-publish",
+      blockedPath,
+      "--source",
+      sourcePath,
+      "--domain",
       "publisher.example",
       "--kid",
       key.kid,
@@ -276,16 +316,16 @@ describe("CLI entrypoint", () => {
       "export-web-env",
       path.join(outDir, "dns-fixture.json"),
       "--status-base-url",
-      "https://publisher.example/groundlock/status",
+      "https://publisher.groundlock.dev/groundlock/status",
       "--site-url",
-      "https://receipts.example.com/path",
+      "https://receipts.groundlock.dev/path",
       "--doh-endpoint",
-      "https://resolver.example/dns-query",
+      "https://resolver.groundlock.dev/dns-query",
     ]);
 
     expect(code).toBe(1);
     const err = stderr.mock.calls.map((call) => String(call[0])).join("");
-    expect(err).toContain("invalid_doh_endpoint");
+    expect(err).toContain("invalid_signer_domain");
   });
 
   it("writes launch-kit artifacts from the actual CLI command", async () => {
@@ -300,7 +340,7 @@ describe("CLI entrypoint", () => {
       "--source",
       sourcePath,
       "--domain",
-      "publisher.example",
+      "publisher.groundlock.dev",
       "--kid",
       key.kid,
       "--key",
@@ -360,7 +400,7 @@ describe("CLI entrypoint", () => {
       source,
       { kid: key.kid, privateKeyJwk: key.privateKeyJwk },
       "2026-06-08T00:00:00.000Z",
-      { signerDomain: "publisher.example", contentClass: "tenant-notice" },
+      { signerDomain: "publisher.groundlock.dev", contentClass: "tenant-notice" },
     );
     const receiptPath = path.join(dir, "receipt.json");
     await writeFile(receiptPath, JSON.stringify(receipt), "utf8");
@@ -368,7 +408,7 @@ describe("CLI entrypoint", () => {
 
     const code = await main([
       "setup-domain",
-      "publisher.example",
+      "publisher.groundlock.dev",
       "--receipt",
       receiptPath,
       "--public-key",
@@ -377,7 +417,7 @@ describe("CLI entrypoint", () => {
 
     expect(code).toBe(0);
     const out = stdout.mock.calls.map((call) => String(call[0])).join("");
-    expect(out).toContain("_truename.publisher.example TXT");
+    expect(out).toContain("_truename.publisher.groundlock.dev TXT");
     expect(out).toContain("cache-manifest");
     expect(out).toContain("cache-chunk");
     expect(out).toContain("DNS mutation: none");
@@ -391,7 +431,7 @@ describe("CLI entrypoint", () => {
       source,
       { kid: key.kid, privateKeyJwk: key.privateKeyJwk },
       "2026-06-08T00:00:00.000Z",
-      { signerDomain: "publisher.example", contentClass: "tenant-notice" },
+      { signerDomain: "publisher.groundlock.dev", contentClass: "tenant-notice" },
     );
     const receiptPath = path.join(dir, "receipt.json");
     await writeFile(receiptPath, JSON.stringify(receipt), "utf8");
@@ -399,7 +439,7 @@ describe("CLI entrypoint", () => {
 
     const code = await main([
       "setup-domain",
-      "publisher.example",
+      "publisher.groundlock.dev",
       "--receipt",
       receiptPath,
       "--public-key",
@@ -412,8 +452,8 @@ describe("CLI entrypoint", () => {
 
     expect(code).toBe(0);
     const out = stdout.mock.calls.map((call) => String(call[0])).join("");
-    expect(out).toContain('_truename.publisher.example. 600 IN TXT "');
-    expect(out).toContain("._groundlock.publisher.example. 600 IN TXT ");
+    expect(out).toContain('_truename.publisher.groundlock.dev. 600 IN TXT "');
+    expect(out).toContain("._groundlock.publisher.groundlock.dev. 600 IN TXT ");
     expect(out).not.toContain("cache-manifest");
     expect(out).toContain("DNS mutation: none");
   });
@@ -429,7 +469,7 @@ describe("CLI entrypoint", () => {
       "--source",
       sourcePath,
       "--domain",
-      "publisher.example",
+      "publisher.groundlock.dev",
       "--kid",
       key.kid,
       "--key",
@@ -480,7 +520,7 @@ describe("CLI entrypoint", () => {
       "--source",
       sourcePath,
       "--domain",
-      "publisher.example",
+      "publisher.groundlock.dev",
       "--kid",
       key.kid,
       "--key",
@@ -503,7 +543,7 @@ describe("CLI entrypoint", () => {
   });
 
   it("checks a live DNS-cache verifier deployment through DoH and status endpoints", async () => {
-    const signerDomain = "publisher.example";
+    const signerDomain = "publisher.groundlock.dev";
     const key = generateSigningKey("live-key");
     const candidate = "Dear Jane Roe, return $2,000.00.";
     const receipt = issueVerifiedReceipt(
@@ -574,7 +614,7 @@ describe("CLI entrypoint", () => {
       "check-live",
       "sha256:abc123",
       "--domain",
-      "publisher.example",
+      "publisher.groundlock.dev",
       "--status-base-url",
       "https://status.groundlock.dev/groundlock",
     ]);
@@ -593,7 +633,7 @@ describe("CLI entrypoint", () => {
       "check-live",
       "sha256:abc123",
       "--domain",
-      "publisher.example",
+      "publisher.groundlock.dev",
       "--doh-endpoint",
       "https://resolver.groundlock.dev/dns-query",
       "--status-base-url",
@@ -603,6 +643,28 @@ describe("CLI entrypoint", () => {
     expect(code).toBe(1);
     const err = stderr.mock.calls.map((call) => String(call[0])).join("");
     expect(err).toContain("invalid_status_base_url");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("fails check-live before network calls when the signer domain is a placeholder", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const code = await main([
+      "check-live",
+      "sha256:abc123",
+      "--domain",
+      "publisher.example",
+      "--doh-endpoint",
+      "https://resolver.groundlock.dev/dns-query",
+      "--status-base-url",
+      "https://status.groundlock.dev/groundlock",
+    ]);
+
+    expect(code).toBe(1);
+    const err = stderr.mock.calls.map((call) => String(call[0])).join("");
+    expect(err).toContain("invalid_signer_domain");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
