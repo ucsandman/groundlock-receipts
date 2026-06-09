@@ -74,6 +74,10 @@ PRIVATE_KEY_MARKERS = (
     "BEGIN RSA PRIVATE KEY",
     "BEGIN EC PRIVATE KEY",
 )
+PRIVATE_JWK_KTY_VALUES = {"OKP", "RSA", "EC"}
+PRIVATE_JWK_TEXT_RE = re.compile(
+    r'(?=.*"kty"\s*:\s*"(?:OKP|RSA|EC)")(?=.*"d"\s*:)', re.DOTALL
+)
 
 
 def load_security_header_contract() -> tuple[dict[str, list[str]], list[str]]:
@@ -835,16 +839,7 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
             failures.append(f"artifactSha256.{key} does not match {artifact_name}")
         if checksum_entries.get(artifact_name) != actual_digest:
             failures.append(f"checksums.txt digest does not match {artifact_name}")
-        try:
-            text = artifact_path.read_text(encoding="utf-8", errors="replace")
-        except OSError as exc:
-            failures.append(f"could not scan {artifact_name}: {exc}")
-            continue
-        for marker in PRIVATE_KEY_MARKERS:
-            if marker in text:
-                failures.append(
-                    f"{artifact_name} contains private key marker {marker!r}"
-                )
+    failures.extend(scan_launch_kit_public_artifacts(root))
 
     kit_fixture_path = root / LAUNCH_KIT_ARTIFACTS["dnsFixture"]
     try:
@@ -896,8 +891,60 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
     return CheckResult(
         "launch-kit",
         True,
-        "launch summary, fixture receipt metadata, DNS zone, web env, status records, HN wrapper, runbook, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
+        "launch summary, fixture receipt metadata, DNS zone, web env, status records, HN wrapper, runbook, artifact hashes, checksum manifest, secret scan, and fixture copy match readiness inputs",
     )
+
+
+def scan_launch_kit_public_artifacts(root: Path) -> list[str]:
+    failures = []
+    for artifact_name in sorted(set(LAUNCH_KIT_ARTIFACTS.values())):
+        artifact_path = root / artifact_name
+        if not artifact_path.is_file():
+            continue
+        try:
+            text = artifact_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            failures.append(f"could not scan {artifact_name}: {exc}")
+            continue
+        failures.extend(private_key_failures(artifact_name, text))
+    return failures
+
+
+def private_key_failures(artifact_name: str, text: str) -> list[str]:
+    failures = [
+        f"{artifact_name} contains private key marker {marker!r}"
+        for marker in PRIVATE_KEY_MARKERS
+        if marker in text
+    ]
+    if text_contains_private_jwk(text):
+        failures.append(f"{artifact_name} contains private JWK material")
+    return failures
+
+
+def text_contains_private_jwk(text: str) -> bool:
+    if PRIVATE_JWK_TEXT_RE.search(text):
+        return True
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return contains_private_jwk(parsed)
+
+
+def contains_private_jwk(value: object) -> bool:
+    if isinstance(value, dict):
+        if (
+            isinstance(value.get("d"), str)
+            and isinstance(value.get("kty"), str)
+            and value.get("kty") in PRIVATE_JWK_KTY_VALUES
+        ):
+            return True
+        return any(contains_private_jwk(child) for child in value.values())
+    if isinstance(value, list):
+        return any(contains_private_jwk(child) for child in value)
+    if isinstance(value, str):
+        return text_contains_private_jwk(value)
+    return False
 
 
 def fixture_status_records_for_launch_kit(

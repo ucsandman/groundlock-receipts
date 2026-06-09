@@ -1527,6 +1527,66 @@ class HnReadinessTests(unittest.TestCase):
         self.assertIn("artifactSha256.runbook does not match runbook.md", result.detail)
         self.assertIn("checksums.txt digest does not match runbook.md", result.detail)
 
+    def test_launch_kit_check_fails_when_summary_contains_private_jwk(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            summary_path = kit / "launch-summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["debugSigningKey"] = {
+                "crv": "Ed25519",
+                "d": "private-material",
+                "kty": "OKP",
+                "x": "public-material",
+            }
+            summary_path.write_text(
+                json.dumps(summary, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            "launch-summary.json contains private JWK material", result.detail
+        )
+
+    def test_launch_kit_check_fails_when_public_artifact_embeds_private_jwk_string(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            runbook_path = kit / "runbook.md"
+            runbook = runbook_path.read_text(encoding="utf-8")
+            runbook_path.write_text(
+                runbook
+                + '\nDebug key: {"d":"private-material","kty":"OKP","x":"public-material"}\n',
+                encoding="utf-8",
+            )
+            refresh_launch_kit_hashes(kit)
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn("runbook.md contains private JWK material", result.detail)
+
     def test_launch_kit_check_fails_when_hn_readiness_script_uses_wrong_input(
         self,
     ) -> None:
