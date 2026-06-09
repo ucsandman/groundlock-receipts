@@ -1692,10 +1692,12 @@ def validate_cached_receipt_payload(
         return ["fixture DNS cache payload is malformed receipt JSON"]
     signer_domain = receipt.get("signerDomain")
     signer_key_id = receipt.get("signerKeyId")
+    candidate_hash = receipt.get("candidateHash")
     content_hashes = receipt.get("contentHashes")
     if (
         not isinstance(signer_domain, str)
         or not isinstance(signer_key_id, str)
+        or not isinstance(candidate_hash, str)
         or not isinstance(content_hashes, list)
     ):
         return ["fixture cached receipt is malformed"]
@@ -1706,8 +1708,14 @@ def validate_cached_receipt_payload(
         or signer_key_id != manifest.kid
     ):
         failures.append("fixture cached receipt signer does not match cache manifest")
+    if candidate_hash != content_hash:
+        failures.append("fixture cached receipt candidateHash does not match demo hash")
     if not has_candidate_content_hash(content_hashes, content_hash):
         failures.append("fixture cached receipt does not describe demo hash")
+    if not has_candidate_content_hash(content_hashes, candidate_hash):
+        failures.append(
+            "fixture cached receipt contentHashes do not include candidateHash"
+        )
     if receipt_status_hash(receipt) != manifest.receipt_hash:
         failures.append(
             "fixture cached receipt body hash does not match cache manifest"

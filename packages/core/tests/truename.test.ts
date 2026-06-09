@@ -1,6 +1,8 @@
+import { sign as cryptoSign } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { generateSigningKey } from "../src/keys";
-import { issueVerifiedReceipt } from "../src/receipt";
+import { canonicalizeJson, digestText } from "../src/canonicalize";
+import { generateSigningKey, privateKeyFromJwk, type KeyPairJwk } from "../src/keys";
+import { issueVerifiedReceipt, TEXT_CANONICALIZATION } from "../src/receipt";
 import {
   createClaimStatusRecord,
   createKeyStatusRecord,
@@ -12,6 +14,8 @@ import {
   createDnsCacheRecords,
   createDohTxtResolver,
   createLocalTrueNameResolver,
+  cacheChunkName,
+  contentHashToDnsName,
   formatCacheManifestRecord,
   formatIdentityRecord,
   parseCacheManifestRecord,
@@ -75,6 +79,12 @@ function fixtureFor(receipt: ProofReceipt, publicKeyJwk: JsonWebKey, statusResol
     txt: txtFromRecords(createDnsCacheRecords(receipt, publicKeyJwk, { chunkSize: 80 })),
     statusResolver,
   });
+}
+
+function resignReceipt(receipt: ProofReceipt, key: KeyPairJwk): ProofReceipt {
+  const { signature: _signature, ...base } = receipt;
+  const sig = cryptoSign(null, Buffer.from(canonicalizeJson(base), "utf8"), privateKeyFromJwk(key.privateKeyJwk));
+  return { ...base, signature: { alg: "EdDSA", kid: key.kid, sig: sig.toString("base64url") } };
 }
 
 describe("TrueName DNS cache resolver state machine", () => {
@@ -186,6 +196,35 @@ describe("TrueName DNS cache resolver state machine", () => {
         createLocalTrueNameResolver({ txt, statusResolver: activeStatusResolver(receipt) }),
       ),
     ).resolves.toEqual(expect.objectContaining({ state: "UNVERIFIABLE", code: "receipt_hash_mismatch" }));
+  });
+
+  it("binds verification to the receipt candidateHash, not an extra candidate content hash", async () => {
+    const { key, receipt } = signedReceipt();
+    const aliasHash = digestText("A different message for the same signer.");
+    const aliasedReceipt = resignReceipt(
+      {
+        ...receipt,
+        contentHashes: [
+          ...receipt.contentHashes,
+          { role: "candidate", alg: "sha256", value: aliasHash, canonicalization: TEXT_CANONICALIZATION },
+        ],
+      },
+      key,
+    );
+    const records = createDnsCacheRecords(aliasedReceipt, key.publicKeyJwk, { chunkSize: 80 });
+    const txt = txtFromRecords(records);
+    txt[contentHashToDnsName(aliasHash, signerDomain)] = [records.manifest.value];
+    for (const chunk of records.chunks) {
+      txt[cacheChunkName(aliasHash, signerDomain, chunk.index)] = [chunk.value];
+    }
+
+    await expect(
+      verifyTrueName(
+        aliasHash,
+        signerDomain,
+        createLocalTrueNameResolver({ txt, statusResolver: activeStatusResolver(aliasedReceipt) }),
+      ),
+    ).resolves.toEqual(expect.objectContaining({ state: "UNVERIFIABLE", code: "content_hash_mismatch" }));
   });
 
   it("returns UNVERIFIABLE for a bad signature and for status resolver exceptions", async () => {

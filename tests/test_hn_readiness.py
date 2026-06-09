@@ -103,6 +103,27 @@ def cached_receipt_parts(
     }
 
 
+def cached_receipt_parts_with_candidate_alias() -> dict[str, object]:
+    parts = cached_receipt_parts()
+    receipt = dict(parts["receipt"])
+    receipt["candidateHash"] = "sha256:other"
+    receipt["contentHashes"] = [
+        *list(receipt["contentHashes"]),
+        {
+            "role": "candidate",
+            "alg": "sha256",
+            "value": "sha256:other",
+            "canonicalization": "groundlock:text:nfc-v1",
+        },
+    ]
+    payload = base64url_json(receipt)
+    return {
+        "receipt": receipt,
+        "payload": payload,
+        "receipt_hash": hn_readiness.receipt_status_hash(receipt),
+    }
+
+
 def manifest_record(
     receipt_hash: str = "abc",
     payload: str = "abc",
@@ -991,6 +1012,41 @@ class HnReadinessTests(unittest.TestCase):
 
                 self.assertFalse(result.ok)
                 self.assertIn(expected_detail, result.detail)
+
+    def test_dns_fixture_preflight_rejects_cached_receipt_candidate_hash_alias(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            parts = cached_receipt_parts_with_candidate_alias()
+            fixture = Path(tmp) / "dns-fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "domain": "receipts.groundlock.dev",
+                        "txt": {
+                            "_truename.receipts.groundlock.dev": [
+                                identity_record("k1")
+                            ],
+                            "gl-abc._groundlock.receipts.groundlock.dev": [
+                                manifest_record_for_parts(parts)
+                            ],
+                            "c0.gl-abc._groundlock.receipts.groundlock.dev": [
+                                chunk_record(parts)
+                            ],
+                        },
+                        "status": active_status_for_parts(parts),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = hn_readiness.check_dns_fixture(
+                str(fixture), "receipts.groundlock.dev", "sha256:abc"
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("candidateHash", result.detail)
+        self.assertIn("demo hash", result.detail)
 
     def test_dns_fixture_preflight_rejects_malformed_status_record_shape(
         self,

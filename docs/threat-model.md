@@ -77,7 +77,7 @@ BLOCK is available when a signed receipt verifies and the publisher's own receip
 
 REVOKED is available when the receipt or key status says revoked, retracted, or compromised.
 
-UNVERIFIABLE is used for missing DNS, missing DNSSEC/validation evidence where required, malformed records, missing cache chunks, mismatched payload hashes, mismatched receipt hashes, invalid signatures, missing status records, unsupported input, rate limits, or payload limits.
+UNVERIFIABLE is used for missing DNS, missing DNSSEC/validation evidence where required, malformed records, missing cache chunks, mismatched payload hashes, mismatched receipt hashes, candidate hash mismatches, invalid signatures, missing status records, unsupported input, rate limits, or payload limits.
 
 ## Key rotation
 

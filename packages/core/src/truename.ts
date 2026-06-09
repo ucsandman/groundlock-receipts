@@ -282,7 +282,10 @@ export async function verifyTrueName(
   if (normalizeDomain(receipt.signerDomain) !== manifest.signerDomain || receipt.signerKeyId !== manifest.kid) {
     return state("UNVERIFIABLE", "receipt_signer_mismatch", "Cached receipt signer did not match DNS cache manifest");
   }
-  if (!receipt.contentHashes.some((entry) => entry.role === "candidate" && entry.value === contentHash)) {
+  if (
+    receipt.candidateHash !== contentHash ||
+    !receipt.contentHashes.some((entry) => entry.role === "candidate" && entry.value === contentHash)
+  ) {
     return state("UNVERIFIABLE", "content_hash_mismatch", "Cached receipt does not describe the requested content hash");
   }
   if (receiptStatusHash(receipt) !== manifest.receiptHash) {
@@ -431,6 +434,7 @@ function isFetchedReceiptShape(value: unknown): value is ProofReceipt {
   return (
     typeof value.signerDomain === "string" &&
     typeof value.signerKeyId === "string" &&
+    typeof value.candidateHash === "string" &&
     Array.isArray(value.contentHashes)
   );
 }
