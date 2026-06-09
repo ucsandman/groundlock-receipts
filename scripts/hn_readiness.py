@@ -521,6 +521,9 @@ def check_public_discovery_files(url: str, timeout: float = 10.0) -> CheckResult
                         False,
                         f"{endpoint} returned HTTP {response.status}",
                     )
+                header_failures = validate_response_headers(response.headers, label)
+                if header_failures:
+                    return CheckResult("discovery", False, "; ".join(header_failures))
                 bodies[label] = body
         except Exception as exc:
             return CheckResult("discovery", False, f"{endpoint} failed: {exc}")

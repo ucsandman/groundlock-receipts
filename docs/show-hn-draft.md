@@ -56,7 +56,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - deployed `/api/health` returning 200, including bundled status record readiness for same-origin status deployments
 - public homepage title, canonical URL, and share metadata matching the deployed public verifier origin
 - public `robots.txt` and `sitemap.xml` matching the deployed public verifier origin
-- deployed homepage, health, and verify responses with production security headers; health and verify responses with `Cache-Control: no-store`
+- deployed homepage, robots, sitemap, health, and verify responses with production security headers; health and verify responses with `Cache-Control: no-store`
 - container build and healthcheck evidence, if deploying by container
 - `groundlock launch-kit` output generated from the same PASS demo fixture
 - _truename.<domain> TXT identity record

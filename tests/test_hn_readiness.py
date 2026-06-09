@@ -1748,6 +1748,66 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("invalid XML", result.detail)
 
+    def test_public_discovery_check_requires_security_headers(self) -> None:
+        robots = """
+        User-Agent: *
+        Allow: /
+        Disallow: /api/
+        Disallow: /groundlock/status/
+        Sitemap: https://receipts.groundlock.dev/sitemap.xml
+        """
+        sitemap = """
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>https://receipts.groundlock.dev/</loc></url>
+          <url><loc>https://receipts.groundlock.dev/threat-model</loc></url>
+        </urlset>
+        """
+
+        def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
+            self.assertEqual(timeout, 10.0)
+            url = str(getattr(request, "full_url"))
+            body = robots if url.endswith("/robots.txt") else sitemap
+            return FakeHttpResponse(body)
+
+        with mock.patch.object(
+            hn_readiness.urllib.request, "urlopen", side_effect=fake_urlopen
+        ):
+            result = hn_readiness.check_public_discovery_files(
+                "https://receipts.groundlock.dev/api/health"
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("robots.txt missing Content-Security-Policy", result.detail)
+
+    def test_public_discovery_check_accepts_secure_deployed_files(self) -> None:
+        robots = """
+        User-Agent: *
+        Allow: /
+        Disallow: /api/
+        Disallow: /groundlock/status/
+        Sitemap: https://receipts.groundlock.dev/sitemap.xml
+        """
+        sitemap = """
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>https://receipts.groundlock.dev/</loc></url>
+          <url><loc>https://receipts.groundlock.dev/threat-model</loc></url>
+        </urlset>
+        """
+
+        def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
+            url = str(getattr(request, "full_url"))
+            body = robots if url.endswith("/robots.txt") else sitemap
+            return FakeHttpResponse(body, headers=production_security_headers())
+
+        with mock.patch.object(
+            hn_readiness.urllib.request, "urlopen", side_effect=fake_urlopen
+        ):
+            result = hn_readiness.check_public_discovery_files(
+                "https://receipts.groundlock.dev/api/health"
+            )
+
+        self.assertTrue(result.ok)
+
     def test_launch_kit_check_accepts_matching_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             kit = write_launch_kit(Path(tmp))
