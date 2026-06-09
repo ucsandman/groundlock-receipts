@@ -173,6 +173,45 @@ def zone_txt_line(name: str, value: str, ttl: int = 300) -> str:
     return f"{name}. {ttl} IN TXT {quoted}"
 
 
+def ps_escape(value: str) -> str:
+    return value.replace("`", "``").replace('"', '`"')
+
+
+def hn_readiness_ps1(
+    *,
+    site_url: str,
+    status_base_url: str,
+    doh_endpoint: str,
+    domain: str,
+    file_or_hash: str,
+) -> str:
+    return "\n".join(
+        [
+            '$ErrorActionPreference = "Stop"',
+            "$KitDir = Split-Path -Parent $MyInvocation.MyCommand.Path",
+            '$RepoRoot = $CandidateRoots | Where-Object { Test-Path (Join-Path $_ "scripts\\hn_readiness.py") } | Select-Object -First 1',
+            "Push-Location $RepoRoot",
+            "try {",
+            "  python .\\scripts\\hn_readiness.py `",
+            f'  --health-url "{ps_escape(site_url)}" `',
+            '  --dns-fixture (Join-Path $KitDir "dns-fixture.json") `',
+            f'  --file-or-hash "{ps_escape(file_or_hash)}" `',
+            f'  --domain "{ps_escape(domain)}" `',
+            f'  --status-base-url "{ps_escape(status_base_url)}" `',
+            f'  --doh-endpoint "{ps_escape(doh_endpoint)}" `',
+            f'  --repo "{hn_readiness.DEFAULT_REPO}" `',
+            '  --branch "main" `',
+            '  --show-hn-draft "docs/show-hn-draft.md" `',
+            "  --launch-kit $KitDir `",
+            '  --evidence-out (Join-Path $KitDir "hn-readiness-evidence.json")',
+            "} finally {",
+            "  Pop-Location",
+            "}",
+            "",
+        ]
+    )
+
+
 def write_launch_kit(
     root: Path,
     *,
@@ -224,7 +263,13 @@ def write_launch_kit(
         )
         + "\n",
         "statusRecords": json.dumps(status_records, indent=2, sort_keys=True) + "\n",
-        "hnReadiness": ".\\hn-readiness.ps1\n",
+        "hnReadiness": hn_readiness_ps1(
+            site_url=site_url,
+            status_base_url=status_base_url,
+            doh_endpoint=doh_endpoint,
+            domain=domain,
+            file_or_hash=content_hash,
+        ),
         "runbook": "groundlock warm-cache .\\dns-fixture.json\n",
     }
     for key, text in artifact_contents.items():
@@ -1431,6 +1476,36 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("artifactSha256.runbook does not match runbook.md", result.detail)
         self.assertIn("checksums.txt digest does not match runbook.md", result.detail)
+
+    def test_launch_kit_check_fails_when_hn_readiness_script_uses_wrong_input(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            script_path = kit / "hn-readiness.ps1"
+            script = script_path.read_text(encoding="utf-8")
+            script_path.write_text(
+                script.replace(
+                    '--doh-endpoint "https://resolver.groundlock.dev/dns-query"',
+                    '--doh-endpoint "https://other.groundlock.dev/dns-query"',
+                ),
+                encoding="utf-8",
+            )
+            refresh_launch_kit_hashes(kit)
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn("hn-readiness.ps1 is missing", result.detail)
+        self.assertIn("--doh-endpoint", result.detail)
 
     def test_launch_kit_check_fails_when_summary_receipt_metadata_differs(
         self,

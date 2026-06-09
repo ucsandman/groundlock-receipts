@@ -876,13 +876,20 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
         )
         if dns_zone_result:
             failures.append(dns_zone_result)
+    hn_readiness_result = validate_launch_kit_hn_readiness(
+        root / LAUNCH_KIT_ARTIFACTS["hnReadiness"],
+        args,
+        expected_site_url,
+    )
+    if hn_readiness_result:
+        failures.append(hn_readiness_result)
 
     if failures:
         return CheckResult("launch-kit", False, "; ".join(failures))
     return CheckResult(
         "launch-kit",
         True,
-        "launch summary, fixture receipt metadata, DNS zone, web env, status records, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
+        "launch summary, fixture receipt metadata, DNS zone, web env, status records, HN wrapper, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
     )
 
 
@@ -923,6 +930,52 @@ def validate_launch_kit_status_records(
     if canonical_json(records) != canonical_json(fixture_status_records):
         return "status-records.json does not match DNS fixture status records"
     return None
+
+
+def validate_launch_kit_hn_readiness(
+    path: Path, args: argparse.Namespace, expected_site_url: str | None
+) -> str | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return f"could not read {path}: {exc}"
+
+    repo = getattr(args, "repo", DEFAULT_REPO)
+    branch = getattr(args, "branch", "main")
+    show_hn_draft = getattr(args, "show_hn_draft", "docs/show-hn-draft.md")
+    show_hn_draft_options = {show_hn_draft, "docs/show-hn-draft.md"}
+    required_snippets = [
+        "scripts\\hn_readiness.py",
+        "Push-Location $RepoRoot",
+        "Pop-Location",
+        f'--health-url "{escape_ps(expected_site_url or args.health_url)}"',
+        '--dns-fixture (Join-Path $KitDir "dns-fixture.json")',
+        f'--file-or-hash "{escape_ps(args.file_or_hash)}"',
+        f'--domain "{escape_ps(args.domain)}"',
+        f'--status-base-url "{escape_ps(args.status_base_url)}"',
+        f'--doh-endpoint "{escape_ps(args.doh_endpoint)}"',
+        f'--repo "{escape_ps(repo)}"',
+        f'--branch "{escape_ps(branch)}"',
+        "--launch-kit $KitDir",
+        '--evidence-out (Join-Path $KitDir "hn-readiness-evidence.json")',
+    ]
+    failures = [
+        f"hn-readiness.ps1 is missing {snippet!r}"
+        for snippet in required_snippets
+        if snippet not in text
+    ]
+    if not any(
+        f'--show-hn-draft "{escape_ps(candidate)}"' in text
+        for candidate in show_hn_draft_options
+    ):
+        failures.append("hn-readiness.ps1 show-hn-draft argument does not match")
+    if failures:
+        return "; ".join(failures)
+    return None
+
+
+def escape_ps(value: str) -> str:
+    return value.replace("`", "``").replace('"', '`"')
 
 
 def parse_web_env(text: str) -> tuple[dict[str, str], list[str]]:
