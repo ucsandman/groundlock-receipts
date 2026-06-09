@@ -41,6 +41,7 @@ class ContainerConfigTests(unittest.TestCase):
         )
         self.assertIn("docker run", workflow)
         self.assertIn("scripts/smoke_web_response.mjs", workflow)
+        self.assertIn("--verify-file-text", workflow)
         self.assertIn("Smoke Docker live mode", workflow)
         self.assertIn("GROUNDLOCK_SIGNER_DOMAIN", workflow)
         self.assertIn("GROUNDLOCK_STATUS_RECORDS_JSON", workflow)
@@ -64,8 +65,10 @@ class ContainerConfigTests(unittest.TestCase):
         self.assertIn("Permissions-Policy", contract["requiredHeaderValues"])
         self.assertIn("unsafe-eval", " ".join(contract["forbiddenCspValues"]))
         self.assertIn("/api/health", smoke)
+        self.assertIn("/api/verify", smoke)
         self.assertIn("Cache-Control: no-store", smoke)
         self.assertIn("--expect-live", smoke)
+        self.assertIn("--verify-file-text", smoke)
         self.assertIn("statusRecordsConfigured", smoke)
         self.assertIn("/groundlock/status/", smoke)
 

@@ -76,9 +76,14 @@ class SmokeFixture:
         *,
         homepage_origin: str = "https://receipts.groundlock.dev",
         status_records_configured: bool = True,
+        verify_state: str = "PASS",
+        verify_no_store: bool = True,
     ) -> None:
         self.homepage_origin = homepage_origin
         self.status_records_configured = status_records_configured
+        self.verify_state = verify_state
+        self.verify_no_store = verify_no_store
+        self.verify_requests: list[object] = []
 
 
 class SmokeHandler(BaseHTTPRequestHandler):
@@ -107,6 +112,46 @@ class SmokeHandler(BaseHTTPRequestHandler):
             return
         self.send_response(404)
         self.end_headers()
+
+    def do_POST(self) -> None:  # noqa: vulture
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/verify":
+            self.send_response(404)
+            self.end_headers()
+            return
+
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length).decode("utf-8")
+        try:
+            self.server.fixture.verify_requests.append(json.loads(raw))
+        except json.JSONDecodeError:
+            self.server.fixture.verify_requests.append(raw)
+
+        state = self.server.fixture.verify_state
+        self.send_json(
+            {
+                "state": state,
+                "code": "verified" if state == "PASS" else "dns_txt_missing",
+                "explanation": "test verifier response",
+                "whatItProves": "test proof boundary",
+                "whatItDoesNotProve": "test non-proof boundary",
+                "receiptSummary": (
+                    {
+                        "signerDomain": "publisher.example",
+                        "signerKeyId": "k1",
+                        "contentClass": "demo-message",
+                        "issuedAt": "2026-06-08T00:00:00.000Z",
+                        "verdict": "pass",
+                        "contentHash": "sha256:testhash",
+                        "receiptHash": "sha256:testreceipt",
+                    }
+                    if state == "PASS"
+                    else None
+                ),
+                "timingMs": 1,
+            },
+            no_store=self.server.fixture.verify_no_store,
+        )
 
     def send_status_record(self, query: str, kind: str, expected_lookup: str) -> None:
         lookup = parse_qs(query).get("lookup", [""])[0]
@@ -143,26 +188,33 @@ class SmokeServer(ThreadingHTTPServer):
 
 
 class WebResponseSmokeTests(unittest.TestCase):
-    def run_smoke(self, fixture: SmokeFixture) -> subprocess.CompletedProcess[str]:
+    def run_smoke(
+        self,
+        fixture: SmokeFixture,
+        extra_args: list[str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         server = SmokeServer(("127.0.0.1", 0), SmokeHandler)
         server.fixture = fixture
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
             base_url = f"http://127.0.0.1:{server.server_port}"
+            args = [
+                "node",
+                str(SMOKE_SCRIPT),
+                base_url,
+                "--expect-live",
+                "--expected-origin",
+                "https://receipts.groundlock.dev",
+                "--status-key-lookup",
+                "key:publisher.example:k1",
+                "--status-claim-lookup",
+                "claim:sha256:abc123",
+            ]
+            if extra_args:
+                args.extend(extra_args)
             return subprocess.run(
-                [
-                    "node",
-                    str(SMOKE_SCRIPT),
-                    base_url,
-                    "--expect-live",
-                    "--expected-origin",
-                    "https://receipts.groundlock.dev",
-                    "--status-key-lookup",
-                    "key:publisher.example:k1",
-                    "--status-claim-lookup",
-                    "claim:sha256:abc123",
-                ],
+                args,
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -191,6 +243,47 @@ class WebResponseSmokeTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("statusRecordsConfigured", result.stderr)
+
+    def test_smoke_accepts_verify_pass_response(self) -> None:
+        fixture = SmokeFixture()
+        result = self.run_smoke(
+            fixture,
+            [
+                "--verify-file-text",
+                "Dear Jane Roe, your account AC-40192 shows a balance of $1,500.00.",
+            ],
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PASS web response smoke", result.stdout)
+        self.assertEqual(
+            fixture.verify_requests,
+            [
+                {
+                    "fileText": "Dear Jane Roe, your account AC-40192 shows a balance of $1,500.00."
+                }
+            ],
+        )
+
+    def test_smoke_rejects_verify_state_mismatch(self) -> None:
+        result = self.run_smoke(
+            SmokeFixture(verify_state="UNVERIFIABLE"),
+            ["--verify-hash", "sha256:testhashvalue"],
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "/api/verify returned state UNVERIFIABLE, expected PASS", result.stderr
+        )
+
+    def test_smoke_rejects_verify_without_no_store(self) -> None:
+        result = self.run_smoke(
+            SmokeFixture(verify_no_store=False),
+            ["--verify-hash", "sha256:testhashvalue"],
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("/api/verify missing Cache-Control: no-store", result.stderr)
 
 
 if __name__ == "__main__":
