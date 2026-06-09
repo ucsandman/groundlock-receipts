@@ -204,6 +204,62 @@ function validateHomepageMetadata(html, expectedOrigin) {
   }
 }
 
+function validateDiscoveryText(robotsText, sitemapText, expectedOrigin) {
+  if (!expectedOrigin) return;
+  const expectedRoot = `${expectedOrigin}/`;
+  const expectedSitemap = `${expectedOrigin}/sitemap.xml`;
+  const robotsLines = new Set(
+    robotsText
+      .split(/\r?\n/)
+      .map((line) => line.trim().toLowerCase())
+      .filter((line) => line && !line.startsWith("#")),
+  );
+  const requiredRobotsLines = [
+    "user-agent: *",
+    "allow: /",
+    "disallow: /api/",
+    "disallow: /groundlock/status/",
+    `sitemap: ${expectedSitemap}`.toLowerCase(),
+  ];
+  for (const line of requiredRobotsLines) {
+    if (!robotsLines.has(line)) throw new Error(`/robots.txt missing ${line}`);
+  }
+
+  const locs = [...sitemapText.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((match) =>
+    (match[1] ?? "").trim(),
+  );
+  for (const loc of [expectedRoot, `${expectedOrigin}/threat-model`]) {
+    if (!locs.includes(loc)) throw new Error(`/sitemap.xml missing ${loc}`);
+  }
+  for (const loc of locs) {
+    let parsed;
+    try {
+      parsed = new URL(loc);
+    } catch {
+      throw new Error(`/sitemap.xml has invalid URL ${loc}`);
+    }
+    if (parsed.origin !== expectedOrigin) {
+      throw new Error(`/sitemap.xml loc is outside launch origin: ${loc}`);
+    }
+    if (parsed.pathname.startsWith("/api/") || parsed.pathname.startsWith("/groundlock/status/")) {
+      throw new Error(`/sitemap.xml exposes non-public path: ${loc}`);
+    }
+  }
+}
+
+async function validateDiscoveryFiles(baseUrl, expectedOrigin) {
+  if (!expectedOrigin) return;
+  const robotsUrl = endpoint(baseUrl, "/robots.txt");
+  const sitemapUrl = endpoint(baseUrl, "/sitemap.xml");
+  const robots = await fetchText(robotsUrl);
+  if (!robots.response.ok) throw new Error(`/robots.txt returned HTTP ${robots.response.status}`);
+  validateSecurityHeaders(robots.response, "/robots.txt");
+  const sitemap = await fetchText(sitemapUrl);
+  if (!sitemap.response.ok) throw new Error(`/sitemap.xml returned HTTP ${sitemap.response.status}`);
+  validateSecurityHeaders(sitemap.response, "/sitemap.xml");
+  validateDiscoveryText(robots.text, sitemap.text, expectedOrigin);
+}
+
 function validateHealthBody(body, opts) {
   if (body?.service !== "groundlock-web" || body?.ok !== true) {
     throw new Error("/api/health did not return a live health JSON shape");
@@ -297,6 +353,7 @@ async function smoke(opts) {
   }
   await validateStatusEndpoint(baseUrl, "key", opts.statusKeyLookup);
   await validateStatusEndpoint(baseUrl, "claim", opts.statusClaimLookup);
+  await validateDiscoveryFiles(baseUrl, opts.expectedOrigin);
   await validateVerifyEndpoint(baseUrl, opts);
 }
 

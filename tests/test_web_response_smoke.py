@@ -37,6 +37,29 @@ def homepage_html(origin: str) -> str:
     """
 
 
+def robots_text(origin: str) -> str:
+    return "\n".join(
+        [
+            "User-Agent: *",
+            "Allow: /",
+            "Disallow: /api/",
+            "Disallow: /groundlock/status/",
+            f"Sitemap: {origin}/sitemap.xml",
+            "",
+        ]
+    )
+
+
+def sitemap_xml(origin: str, *, expose_api: bool = False) -> str:
+    urls = [f"{origin}/", f"{origin}/threat-model"]
+    if expose_api:
+        urls.append(f"{origin}/api/health")
+    items = "".join(f"<url><loc>{url}</loc></url>" for url in urls)
+    return (
+        f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{items}</urlset>'
+    )
+
+
 def live_health(*, status_records_configured: bool = True) -> dict[str, object]:
     return {
         "service": "groundlock-web",
@@ -75,11 +98,15 @@ class SmokeFixture:
         self,
         *,
         homepage_origin: str = "https://receipts.groundlock.dev",
+        discovery_origin: str | None = None,
+        discovery_exposes_api: bool = False,
         status_records_configured: bool = True,
         verify_state: str = "PASS",
         verify_no_store: bool = True,
     ) -> None:
         self.homepage_origin = homepage_origin
+        self.discovery_origin = discovery_origin or homepage_origin
+        self.discovery_exposes_api = discovery_exposes_api
         self.status_records_configured = status_records_configured
         self.verify_state = verify_state
         self.verify_no_store = verify_no_store
@@ -93,6 +120,17 @@ class SmokeHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/":
             self.send_text(homepage_html(self.server.fixture.homepage_origin))
+            return
+        if parsed.path == "/robots.txt":
+            self.send_text(robots_text(self.server.fixture.discovery_origin))
+            return
+        if parsed.path == "/sitemap.xml":
+            self.send_text(
+                sitemap_xml(
+                    self.server.fixture.discovery_origin,
+                    expose_api=self.server.fixture.discovery_exposes_api,
+                )
+            )
             return
         if parsed.path == "/api/health":
             self.send_json(
@@ -237,6 +275,17 @@ class WebResponseSmokeTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("canonical", result.stderr)
         self.assertIn("localhost", result.stderr)
+
+    def test_smoke_rejects_stale_public_discovery_files(self) -> None:
+        result = self.run_smoke(
+            SmokeFixture(
+                discovery_origin="http://localhost:3000",
+                discovery_exposes_api=True,
+            )
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("/robots.txt missing sitemap", result.stderr)
 
     def test_smoke_rejects_live_health_without_status_records(self) -> None:
         result = self.run_smoke(SmokeFixture(status_records_configured=False))
