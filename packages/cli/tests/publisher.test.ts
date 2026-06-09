@@ -179,6 +179,8 @@ describe("publisher SDK", () => {
     expect(statusRecords).toContain('"kind": "claim"');
     expect(summary.schema).toBe("groundlock-launch-kit/v1");
     expect(summary.receiptVerdict).toBe("pass");
+    expect(summary.receiptIssuedAt).toBeTypeOf("string");
+    expect(summary.contentClass).toBe("publisher-file");
     expect(summary.fetchTimeoutMs).toBe(5000);
     expect(summary.dnsTxtRecordCount).toBeGreaterThan(0);
     expect(summary.artifacts.runbook).toBe("runbook.md");

@@ -115,6 +115,13 @@ class FixtureManifest:
     chunk_count: int
 
 
+@dataclass(frozen=True)
+class FixtureReceiptMetadata:
+    verdict: str
+    issued_at: str
+    content_class: str
+
+
 class MetadataExtractor(html.parser.HTMLParser):
     def __init__(self) -> None:
         super().__init__()
@@ -747,6 +754,20 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
             failures.append("launch summary receiptHash does not match DNS fixture")
         if summary.get("signerKeyId") != fixture_manifest.kid:
             failures.append("launch summary signerKeyId does not match DNS fixture")
+    fixture_receipt_metadata = fixture_receipt_metadata_for_launch_kit(
+        args.dns_fixture, args.domain, args.file_or_hash
+    )
+    if isinstance(fixture_receipt_metadata, str):
+        failures.append(fixture_receipt_metadata)
+    else:
+        if summary.get("receiptVerdict") != fixture_receipt_metadata.verdict:
+            failures.append("launch summary receiptVerdict does not match DNS fixture")
+        if summary.get("receiptIssuedAt") != fixture_receipt_metadata.issued_at:
+            failures.append("launch summary receiptIssuedAt does not match DNS fixture")
+        if summary.get("contentClass") != fixture_receipt_metadata.content_class:
+            failures.append("launch summary contentClass does not match DNS fixture")
+        if fixture_receipt_metadata.verdict != "pass":
+            failures.append("DNS fixture cached receipt verdict is not pass")
 
     fixture_status_records = fixture_status_records_for_launch_kit(args.dns_fixture)
     if isinstance(fixture_status_records, str):
@@ -1183,6 +1204,72 @@ def fixture_manifest_for_input(
             f"{expected_manifest_name}"
         )
     return manifest
+
+
+def fixture_receipt_metadata_for_launch_kit(
+    path: str, domain: str, file_or_hash: str
+) -> FixtureReceiptMetadata | str:
+    try:
+        content_hash = content_hash_for_input(file_or_hash)
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except OSError as exc:
+        return f"could not read DNS fixture receipt metadata for launch kit: {exc}"
+    except json.JSONDecodeError as exc:
+        return f"could not parse DNS fixture receipt metadata for launch kit: {exc}"
+    except Exception as exc:
+        return f"could not compute DNS fixture receipt metadata for launch kit: {exc}"
+    if not isinstance(data, dict):
+        return "DNS fixture is not an object while checking launch kit receipt metadata"
+    txt = data.get("txt")
+    if not isinstance(txt, dict) or not txt:
+        return "DNS fixture TXT records are missing while checking launch kit receipt metadata"
+    normalized, failures = normalize_fixture_txt_records(txt)
+    if failures:
+        return "; ".join(failures)
+
+    expected_domain = normalize_domain(domain)
+    expected_manifest_name = (
+        f"gl-{cache_label(content_hash)}._groundlock.{expected_domain}"
+    )
+    manifest, manifest_error = parse_fixture_manifest(
+        normalized.get(expected_manifest_name, [])
+    )
+    if manifest is None:
+        detail = manifest_error or "missing"
+        return (
+            "could not read cached receipt metadata because fixture cache manifest "
+            f"TXT record for demo hash is {detail}: {expected_manifest_name}"
+        )
+    chunk_failures, payload = validate_manifest_chunks(
+        normalized, expected_manifest_name, manifest.chunk_count
+    )
+    if chunk_failures:
+        return "; ".join(chunk_failures)
+    if payload is None:
+        return "fixture DNS cache payload is missing while checking launch kit receipt metadata"
+    if digest_utf8(payload) != manifest.payload_hash:
+        return "fixture DNS cache payload hash does not match cache manifest"
+
+    receipt = parse_base64url_json_object(payload)
+    if receipt is None:
+        return "fixture DNS cache payload is malformed receipt JSON"
+    payload_failures = validate_cached_receipt_payload(payload, content_hash, manifest)
+    if payload_failures:
+        return "; ".join(payload_failures)
+    verdict = receipt.get("verdict")
+    issued_at = receipt.get("issuedAt")
+    content_class = receipt.get("contentClass")
+    if (
+        not isinstance(verdict, str)
+        or not isinstance(issued_at, str)
+        or not isinstance(content_class, str)
+    ):
+        return "fixture cached receipt metadata is malformed"
+    return FixtureReceiptMetadata(
+        verdict=verdict,
+        issued_at=issued_at,
+        content_class=content_class,
+    )
 
 
 def normalize_fixture_txt_records(

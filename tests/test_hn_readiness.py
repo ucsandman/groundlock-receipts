@@ -248,6 +248,8 @@ def write_launch_kit(
         "signerKeyId": kid,
         "fetchTimeoutMs": 5000,
         "receiptVerdict": "pass",
+        "receiptIssuedAt": ISSUED_AT,
+        "contentClass": "notice",
         "dnsTxtRecordCount": len(fixture["txt"]),
         "statusRecordCount": 2,
         "artifacts": hn_readiness.LAUNCH_KIT_ARTIFACTS,
@@ -1457,6 +1459,36 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("receiptHash does not match DNS fixture", result.detail)
         self.assertIn("signerKeyId does not match DNS fixture", result.detail)
+
+    def test_launch_kit_check_fails_when_summary_receipt_fields_differ(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            summary_path = kit / "launch-summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["receiptVerdict"] = "block"
+            summary["receiptIssuedAt"] = "2026-06-09T00:00:00.000Z"
+            summary["contentClass"] = "other"
+            summary_path.write_text(
+                json.dumps(summary, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn("receiptVerdict does not match DNS fixture", result.detail)
+        self.assertIn("receiptIssuedAt does not match DNS fixture", result.detail)
+        self.assertIn("contentClass does not match DNS fixture", result.detail)
 
     def test_launch_kit_check_fails_when_summary_dns_txt_count_differs(
         self,
