@@ -69,7 +69,7 @@ Before removing LOCAL_DEMO_ONLY, deployment needs:
 - check-live PASS evidence for at least one public demo receipt
 - deployed `/api/verify` PASS evidence whose `receiptSummary` matches the same public demo receipt, DNS fixture receipt hash, and launch domain
 - green CI run on main
-- `scripts/hn_readiness.py --launch-kit <dir> --evidence-out <path>` passing and writing JSON evidence with `ok: true`
+- `scripts/hn_readiness.py --launch-kit <dir> --evidence-out <path>` passing and writing JSON evidence with `ok: true` plus the exact GitHub Actions CI run URL/id/head SHA
 
 Repo:
 https://github.com/ucsandman/groundlock-receipts

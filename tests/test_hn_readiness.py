@@ -2796,6 +2796,18 @@ class HnReadinessTests(unittest.TestCase):
             )
             results = [
                 hn_readiness.CheckResult("git", True, "worktree clean"),
+                hn_readiness.CheckResult(
+                    "ci",
+                    True,
+                    "latest CI run 123 succeeded",
+                    {
+                        "databaseId": 123,
+                        "url": "https://github.com/ucsandman/groundlock-receipts/actions/runs/123",
+                        "headSha": "abc",
+                        "status": "completed",
+                        "conclusion": "success",
+                    },
+                ),
                 hn_readiness.CheckResult("health", True, "ready"),
             ]
 
@@ -2850,6 +2862,16 @@ class HnReadinessTests(unittest.TestCase):
             },
         )
         self.assertEqual(report["checks"][0]["name"], "git")
+        self.assertEqual(
+            report["checks"][1]["evidence"],
+            {
+                "databaseId": 123,
+                "url": "https://github.com/ucsandman/groundlock-receipts/actions/runs/123",
+                "headSha": "abc",
+                "status": "completed",
+                "conclusion": "success",
+            },
+        )
         self.assertTrue(
             str(report["securityHeaderContract"]["sha256"]).startswith("sha256:")
         )
@@ -2993,6 +3015,9 @@ class HnReadinessTests(unittest.TestCase):
                     "status": "completed",
                     "conclusion": "success",
                     "databaseId": 123,
+                    "number": 45,
+                    "url": "https://github.com/ucsandman/groundlock-receipts/actions/runs/123",
+                    "workflowName": "CI",
                     "headSha": "older",
                 }
             ],
@@ -3002,6 +3027,18 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("current", result.detail)
         self.assertIn("older", result.detail)
+        self.assertEqual(
+            result.evidence,
+            {
+                "databaseId": 123,
+                "number": 45,
+                "url": "https://github.com/ucsandman/groundlock-receipts/actions/runs/123",
+                "workflowName": "CI",
+                "headSha": "older",
+                "status": "completed",
+                "conclusion": "success",
+            },
+        )
 
     def test_ci_check_accepts_successful_run_for_current_commit(self) -> None:
         result = hn_readiness.validate_ci_runs(
@@ -3010,6 +3047,9 @@ class HnReadinessTests(unittest.TestCase):
                     "status": "completed",
                     "conclusion": "success",
                     "databaseId": 123,
+                    "number": 45,
+                    "url": "https://github.com/ucsandman/groundlock-receipts/actions/runs/123",
+                    "workflowName": "CI",
                     "headSha": "current",
                 }
             ],
@@ -3017,6 +3057,18 @@ class HnReadinessTests(unittest.TestCase):
         )
 
         self.assertTrue(result.ok)
+        self.assertEqual(
+            result.evidence,
+            {
+                "databaseId": 123,
+                "number": 45,
+                "url": "https://github.com/ucsandman/groundlock-receipts/actions/runs/123",
+                "workflowName": "CI",
+                "headSha": "current",
+                "status": "completed",
+                "conclusion": "success",
+            },
+        )
 
 
 if __name__ == "__main__":

@@ -112,6 +112,7 @@ class CheckResult:
     name: str
     ok: bool
     detail: str
+    evidence: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -2265,17 +2266,36 @@ def validate_ci_runs(runs: object, expected_head_sha: str | None) -> CheckResult
     status = run.get("status")
     conclusion = run.get("conclusion")
     head_sha = run.get("headSha")
+    evidence = {
+        key: run[key]
+        for key in (
+            "databaseId",
+            "number",
+            "url",
+            "workflowName",
+            "headSha",
+            "status",
+            "conclusion",
+        )
+        if key in run and run[key] is not None
+    }
     if expected_head_sha and head_sha != expected_head_sha:
         return CheckResult(
             "ci",
             False,
             f"latest CI headSha={head_sha} does not match current HEAD={expected_head_sha}",
+            evidence,
         )
     if status != "completed" or conclusion != "success":
         return CheckResult(
-            "ci", False, f"latest CI is status={status} conclusion={conclusion}"
+            "ci",
+            False,
+            f"latest CI is status={status} conclusion={conclusion}",
+            evidence,
         )
-    return CheckResult("ci", True, f"latest CI run {run.get('databaseId')} succeeded")
+    return CheckResult(
+        "ci", True, f"latest CI run {run.get('databaseId')} succeeded", evidence
+    )
 
 
 def check_ci(repo: str, branch: str) -> CheckResult:
@@ -2300,7 +2320,7 @@ def check_ci(repo: str, branch: str) -> CheckResult:
             "--limit",
             "1",
             "--json",
-            "status,conclusion,headSha,databaseId",
+            "status,conclusion,headSha,databaseId,number,url,workflowName",
         ],
         cwd=str(ROOT),
         capture_output=True,
@@ -2373,7 +2393,14 @@ def evidence_inputs(args: argparse.Namespace) -> dict[str, object]:
 
 
 def result_evidence(result: CheckResult) -> dict[str, object]:
-    return {"name": result.name, "ok": result.ok, "detail": result.detail}
+    evidence: dict[str, object] = {
+        "name": result.name,
+        "ok": result.ok,
+        "detail": result.detail,
+    }
+    if result.evidence is not None:
+        evidence["evidence"] = result.evidence
+    return evidence
 
 
 def build_evidence_report(
