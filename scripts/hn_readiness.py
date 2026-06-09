@@ -883,13 +883,20 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
     )
     if hn_readiness_result:
         failures.append(hn_readiness_result)
+    runbook_result = validate_launch_kit_runbook(
+        root / LAUNCH_KIT_ARTIFACTS["runbook"],
+        args,
+        expected_site_url,
+    )
+    if runbook_result:
+        failures.append(runbook_result)
 
     if failures:
         return CheckResult("launch-kit", False, "; ".join(failures))
     return CheckResult(
         "launch-kit",
         True,
-        "launch summary, fixture receipt metadata, DNS zone, web env, status records, HN wrapper, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
+        "launch summary, fixture receipt metadata, DNS zone, web env, status records, HN wrapper, runbook, artifact hashes, checksum manifest, and fixture copy match readiness inputs",
     )
 
 
@@ -969,6 +976,48 @@ def validate_launch_kit_hn_readiness(
         for candidate in show_hn_draft_options
     ):
         failures.append("hn-readiness.ps1 show-hn-draft argument does not match")
+    if failures:
+        return "; ".join(failures)
+    return None
+
+
+def validate_launch_kit_runbook(
+    path: Path, args: argparse.Namespace, expected_site_url: str | None
+) -> str | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return f"could not read {path}: {exc}"
+
+    repo = getattr(args, "repo", DEFAULT_REPO)
+    branch = getattr(args, "branch", "main")
+    required_snippets = [
+        "# GroundLock launch runbook",
+        "`dns-fixture.json`",
+        "`dns-zone.txt`",
+        "`web.env`",
+        "`status-records.json`",
+        "`hn-readiness.ps1`",
+        f'NEXT_PUBLIC_SITE_URL="{escape_ps(expected_site_url or args.health_url)}"',
+        f"at `{args.status_base_url}`",
+        f'groundlock warm-cache .\\dns-fixture.json --doh-endpoint "{escape_ps(args.doh_endpoint)}"',
+        (
+            f'groundlock check-live "{escape_ps(args.file_or_hash)}" '
+            f'--domain "{escape_ps(args.domain)}" '
+            f'--status-base-url "{escape_ps(args.status_base_url)}" '
+            f'--doh-endpoint "{escape_ps(args.doh_endpoint)}"'
+        ),
+        ".\\hn-readiness.ps1",
+        "checksums.txt",
+        "launch-summary.json.artifactSha256",
+        f"Repository: {repo}",
+        f"Branch: {branch}",
+    ]
+    failures = [
+        f"runbook.md is missing {snippet!r}"
+        for snippet in required_snippets
+        if snippet not in text
+    ]
     if failures:
         return "; ".join(failures)
     return None

@@ -212,6 +212,50 @@ def hn_readiness_ps1(
     )
 
 
+def launch_runbook(
+    *,
+    site_url: str,
+    status_base_url: str,
+    doh_endpoint: str,
+    domain: str,
+    file_or_hash: str,
+) -> str:
+    return "\n".join(
+        [
+            "# GroundLock launch runbook",
+            "",
+            "- `dns-fixture.json`",
+            "- `dns-zone.txt`",
+            "- `web.env`",
+            "- `status-records.json`",
+            "- `hn-readiness.ps1`",
+            "",
+            "```powershell",
+            f'docker build --build-arg NEXT_PUBLIC_SITE_URL="{ps_escape(site_url)}" -t groundlock-web .',
+            "```",
+            "",
+            f"Serve the key and claim status records from `status-records.json` at `{status_base_url}`.",
+            "",
+            "```powershell",
+            f'groundlock warm-cache .\\dns-fixture.json --doh-endpoint "{ps_escape(doh_endpoint)}"',
+            (
+                f'groundlock check-live "{ps_escape(file_or_hash)}" '
+                f'--domain "{ps_escape(domain)}" '
+                f'--status-base-url "{ps_escape(status_base_url)}" '
+                f'--doh-endpoint "{ps_escape(doh_endpoint)}"'
+            ),
+            ".\\hn-readiness.ps1",
+            "```",
+            "",
+            "Compare `checksums.txt` with `launch-summary.json.artifactSha256`.",
+            "",
+            f"Repository: {hn_readiness.DEFAULT_REPO}",
+            "Branch: main",
+            "",
+        ]
+    )
+
+
 def write_launch_kit(
     root: Path,
     *,
@@ -270,7 +314,13 @@ def write_launch_kit(
             domain=domain,
             file_or_hash=content_hash,
         ),
-        "runbook": "groundlock warm-cache .\\dns-fixture.json\n",
+        "runbook": launch_runbook(
+            site_url=site_url,
+            status_base_url=status_base_url,
+            doh_endpoint=doh_endpoint,
+            domain=domain,
+            file_or_hash=content_hash,
+        ),
     }
     for key, text in artifact_contents.items():
         (kit / hn_readiness.LAUNCH_KIT_ARTIFACTS[key]).write_text(
@@ -1506,6 +1556,36 @@ class HnReadinessTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("hn-readiness.ps1 is missing", result.detail)
         self.assertIn("--doh-endpoint", result.detail)
+
+    def test_launch_kit_check_fails_when_runbook_uses_wrong_input(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = write_launch_kit(Path(tmp))
+            runbook_path = kit / "runbook.md"
+            runbook = runbook_path.read_text(encoding="utf-8")
+            runbook_path.write_text(
+                runbook.replace(
+                    '--domain "receipts.groundlock.dev"',
+                    '--domain "other.groundlock.dev"',
+                ),
+                encoding="utf-8",
+            )
+            refresh_launch_kit_hashes(kit)
+            args = SimpleNamespace(
+                health_url="https://receipts.groundlock.dev",
+                status_base_url="https://receipts.groundlock.dev/groundlock/status",
+                doh_endpoint="https://resolver.groundlock.dev/dns-query",
+                domain="receipts.groundlock.dev",
+                dns_fixture=str(kit / "dns-fixture.json"),
+                file_or_hash="sha256:abc123",
+            )
+
+            result = hn_readiness.check_launch_kit(str(kit), args)
+
+        self.assertFalse(result.ok)
+        self.assertIn("runbook.md is missing", result.detail)
+        self.assertIn("--domain", result.detail)
 
     def test_launch_kit_check_fails_when_summary_receipt_metadata_differs(
         self,
