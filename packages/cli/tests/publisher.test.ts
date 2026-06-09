@@ -188,6 +188,7 @@ describe("publisher SDK", () => {
     expect(summary.fetchTimeoutMs).toBe(5000);
     expect(summary.rateLimitMax).toBe(240);
     expect(summary.rateLimitWindowMs).toBe(60000);
+    expect(summary.dnsTtl).toBe(600);
     expect(summary.dnsTxtRecordCount).toBeGreaterThan(0);
     expect(summary.artifacts.runbook).toBe("runbook.md");
     expect(summary.artifacts.checksums).toBe("checksums.txt");

@@ -452,6 +452,7 @@ export async function createLaunchKit(opts: LaunchKitOptions): Promise<LaunchKit
         fetchTimeoutMs: DEFAULT_FETCH_TIMEOUT_MS,
         rateLimitMax: DEFAULT_RATE_LIMIT_MAX,
         rateLimitWindowMs: DEFAULT_RATE_LIMIT_WINDOW_MS,
+        dnsTtl: ttl,
         dnsTxtRecordCount: Object.keys(fixture.txt).length,
         statusRecordCount: 2,
         artifacts: Object.fromEntries(Object.entries(artifactPaths).map(([key, value]) => [key, path.basename(value)])),

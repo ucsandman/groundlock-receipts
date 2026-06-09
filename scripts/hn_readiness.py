@@ -761,6 +761,12 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
         failures.append(
             "launch summary rateLimitWindowMs must be a positive safe integer"
         )
+    summary_dns_ttl = summary.get("dnsTtl")
+    if not isinstance(summary_dns_ttl, int) or isinstance(summary_dns_ttl, bool):
+        failures.append("launch summary dnsTtl is missing")
+        summary_dns_ttl = None
+    elif summary_dns_ttl < 1 or summary_dns_ttl > MAX_SAFE_INTEGER:
+        failures.append("launch summary dnsTtl must be a positive safe integer")
 
     summary_domain = summary.get("domain")
     if not isinstance(summary_domain, str):
@@ -901,7 +907,9 @@ def check_launch_kit(path: str, args: argparse.Namespace) -> CheckResult:
             failures.append(web_env_result)
     if fixture_txt_records is not None:
         dns_zone_result = validate_launch_kit_dns_zone(
-            root / LAUNCH_KIT_ARTIFACTS["dnsZone"], fixture_txt_records
+            root / LAUNCH_KIT_ARTIFACTS["dnsZone"],
+            fixture_txt_records,
+            summary_dns_ttl,
         )
         if dns_zone_result:
             failures.append(dns_zone_result)
@@ -1276,16 +1284,27 @@ def fixture_txt_records_for_launch_kit(dns_fixture: str) -> dict[str, list[str]]
 
 
 def validate_launch_kit_dns_zone(
-    path: Path, fixture_txt_records: dict[str, list[str]]
+    path: Path,
+    fixture_txt_records: dict[str, list[str]],
+    expected_ttl: int | None,
 ) -> str | None:
     try:
-        zone_records, failures = parse_dns_zone_txt_records(
+        zone_records, zone_ttls, failures = parse_dns_zone_txt_records(
             path.read_text(encoding="utf-8")
         )
     except OSError as exc:
         return f"could not read {path}: {exc}"
     if failures:
         return "; ".join(failures)
+    if expected_ttl is not None:
+        mismatched_ttl_names = sorted(
+            name for name, ttls in zone_ttls.items() if ttls != {expected_ttl}
+        )
+        if mismatched_ttl_names:
+            return (
+                "dns-zone.txt TTLs do not match launch summary for "
+                f"{', '.join(mismatched_ttl_names)}"
+            )
     if sorted(zone_records) != sorted(fixture_txt_records):
         return "dns-zone.txt record names do not match DNS fixture TXT records"
     for name, values in fixture_txt_records.items():
@@ -1296,8 +1315,11 @@ def validate_launch_kit_dns_zone(
     return None
 
 
-def parse_dns_zone_txt_records(text: str) -> tuple[dict[str, list[str]], list[str]]:
+def parse_dns_zone_txt_records(
+    text: str,
+) -> tuple[dict[str, list[str]], dict[str, set[int]], list[str]]:
     records: dict[str, list[str]] = {}
+    ttls: dict[str, set[int]] = {}
     failures = []
     for line_number, line in enumerate(text.splitlines(), start=1):
         stripped = line.strip()
@@ -1311,12 +1333,15 @@ def parse_dns_zone_txt_records(text: str) -> tuple[dict[str, list[str]], list[st
         if int(ttl_raw) <= 0:
             failures.append(f"dns-zone.txt line {line_number} has invalid TTL")
             continue
+        ttl = int(ttl_raw)
         value, rdata_error = parse_zone_txt_rdata(rdata)
         if rdata_error:
             failures.append(f"dns-zone.txt line {line_number} {rdata_error}")
             continue
-        records.setdefault(normalize_domain(name), []).append(value)
-    return records, failures
+        normalized_name = normalize_domain(name)
+        records.setdefault(normalized_name, []).append(value)
+        ttls.setdefault(normalized_name, set()).add(ttl)
+    return records, ttls, failures
 
 
 def parse_zone_txt_rdata(value: str) -> tuple[str, str | None]:
